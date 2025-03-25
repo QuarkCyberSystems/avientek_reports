@@ -1,0 +1,49 @@
+{
+ "add_total_row": 1,
+ "columns": [],
+ "creation": "2025-03-17 16:37:57.434632",
+ "disabled": 0,
+ "docstatus": 0,
+ "doctype": "Report",
+ "filters": [],
+ "idx": 0,
+ "is_standard": "Yes",
+ "letter_head": "LH",
+ "letterhead": null,
+ "modified": "2025-03-17 16:37:57.434632",
+ "modified_by": "Administrator",
+ "module": "Avientek Reports",
+ "name": "Avientek Free Stock",
+ "owner": "Administrator",
+ "prepared_report": 0,
+ "ref_doctype": "Item",
+ "report_name": "Avientek Free Stock",
+ "report_type": "Script Report",
+ "roles": [
+  {
+   "role": "Item Manager"
+  },
+  {
+   "role": "Stock Manager"
+  },
+  {
+   "role": "Stock User"
+  },
+  {
+   "role": "Sales User"
+  },
+  {
+   "role": "Purchase User"
+  },
+  {
+   "role": "Maintenance User"
+  },
+  {
+   "role": "Accounts User"
+  },
+  {
+   "role": "Manufacturing User"
+  }
+ ],
+ "timeout": 0
+}

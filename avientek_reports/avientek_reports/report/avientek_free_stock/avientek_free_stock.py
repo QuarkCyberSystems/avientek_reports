@@ -10,6 +10,7 @@ def execute(filters=None):
     - Sums Bin data by Company.
     - Pivot columns by distinct Company.
     - Removes rows if all pivot columns are zero, ignoring unit_price.
+    - Includes an 'Item Code' column before 'Part Number'.
     """
     # 1) We'll still allow brand/item_group/item_code filters for Items if desired:
     item_map = get_items_with_price(filters or {})
@@ -169,7 +170,6 @@ def aggregate_bins_by_company(bin_data):
         item_code = d["item_code"]
         warehouse = d["warehouse"]
         company = wh_to_company.get(warehouse, "")
-        # Sum
         ic_data = item_company_map[item_code][company]
         ic_data["actual_qty"]    += flt(d["actual_qty"])
         ic_data["ordered_qty"]   += flt(d["ordered_qty"])
@@ -179,7 +179,7 @@ def aggregate_bins_by_company(bin_data):
 
     # Distinct companies
     distinct_companies = set()
-    for item_code, comp_dict in item_company_map.items():
+    for _, comp_dict in item_company_map.items():
         for comp in comp_dict:
             distinct_companies.add(comp)
 
@@ -193,7 +193,7 @@ def aggregate_bins_by_company(bin_data):
 # ---------------------------------------------------------------------
 def build_columns(distinct_companies):
     """
-    6 detail columns + for each company, 10 pivot columns + then 10 "Total" columns.
+    7 detail columns (including new 'Item Code') + for each company, 10 pivot columns + then 10 "Total" columns.
     """
     columns = [
         {
@@ -204,6 +204,12 @@ def build_columns(distinct_companies):
         {
             "label": _("Brand Name"),
             "fieldname": "brand_name",
+            "width": 120
+        },
+        {
+            # NEW: Item Code column before Part Number
+            "label": _("Item Code"),
+            "fieldname": "item_code",
             "width": 120
         },
         {
@@ -229,7 +235,7 @@ def build_columns(distinct_companies):
         }
     ]
 
-    # The same 10 repeated columns for each company
+    # 10 repeated columns per company
     sub_columns = [
         ("W/H Stock-Qty",       "wh_stock_qty",   "Float"),
         ("W/H Stock-$",         "wh_stock_val",   "Currency"),
@@ -277,9 +283,11 @@ def build_pivoted_data_by_company(item_map, item_company_map, distinct_companies
     """
     data = []
     for item_code, item_info in item_map.items():
+        # Insert 'item_code' in the row
         row = {
             "brand_type":  item_info["brand_type"],
             "brand_name":  item_info["brand_name"],
+            "item_code":   item_code,  # specifically show the item_code
             "part_number": item_info["part_number"],
             "model":       item_info["model"],
             "description": item_info["description"],
@@ -300,6 +308,7 @@ def build_pivoted_data_by_company(item_map, item_company_map, distinct_companies
 
         price = row["unit_price"]
 
+        # Aggregated bin data for this item, by company
         comp_dict = item_company_map.get(item_code, {})
         for comp in distinct_companies:
             cvals = comp_dict.get(comp, {})

@@ -234,6 +234,16 @@ app_license = "mit"
 # auth_hooks = [
 # 	"avientek_reports.auth.validate"
 # ]
+fixtures = [
+    {
+        "dt": "Custom Field",
+        "filters": [
+            ["name", "in", [
+                "Target Detail-custom_margin_target"
+            ]]
+        ]
+    }
+]
 
 # Automatically update python controller files with type annotations for this app.
 # export_python_type_annotations = True

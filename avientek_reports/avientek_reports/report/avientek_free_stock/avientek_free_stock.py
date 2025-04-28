@@ -113,10 +113,13 @@ def get_items_with_price(filters):
 # ---------------------------------------------------------------------
 def get_bin_data(item_codes):
     """
-    Retrieve all Bin records for the given item_codes (no filters on warehouse).
+    Retrieve all Bin rows for the given items, but ignore warehouses whose
+    name contains 'RMA' or 'DEMO'.
     """
     if not item_codes:
         return []
+
+    placeholders = ", ".join(["%s"] * len(item_codes))
 
     return frappe.db.sql(
         f"""
@@ -129,11 +132,13 @@ def get_bin_data(item_codes):
             b.indented_qty,
             b.projected_qty
         FROM `tabBin` b
-        WHERE b.item_code IN ({", ".join(["%s"] * len(item_codes))})
+        WHERE b.item_code IN ({placeholders})
+          AND b.warehouse NOT LIKE '%%RMA%%'
+          AND b.warehouse NOT LIKE '%%DEMO%%'
         ORDER BY b.item_code, b.warehouse
         """,
         tuple(item_codes),
-        as_dict=True
+        as_dict=True,
     )
 
 

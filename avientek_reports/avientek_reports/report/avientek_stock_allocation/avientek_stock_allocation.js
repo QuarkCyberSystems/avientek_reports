@@ -25,8 +25,8 @@ frappe.query_reports["Avientek Stock Allocation"] = {
             "options": "Company",
         },
         {
-            "fieldname": "part_number",
-            "label": __("Part Number"),
+            "fieldname": "item_code",
+            "label": __("Item Code"),
             "fieldtype": "Link",
             "options": "Item",
         }

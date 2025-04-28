@@ -1,31 +1,44 @@
-// Copyright (c) 2025, QCS and contributors
-// For license information, please see license.txt
+// Copyright (c) 2025, QCS
+// License: see license.txt
 
 frappe.query_reports["Avientek Sales Person Performance"] = {
-	"filters": [
+    filters: [
         {
-            "fieldname": "brand",
-            "label": __("Brand"),
-            "fieldtype": "Link",
-            "options": "Brand"
+            fieldname: "group_by",
+            label: __("Group By"),
+            fieldtype: "Select",
+            options: ["Brand", "All Brands"],
+            default: "Brand"
         },
         {
-            "fieldname": "country",
-            "label": __("Country"),
-            "fieldtype": "Link",
-            "options": "Territory"
+            fieldname: "brand",
+            label: __("Brand"),
+            fieldtype: "Link",
+            options: "Brand",
+            // hide the brand filter when “All Brands” is selected
+            depends_on: "eval:doc.group_by == 'Brand'"
         },
         {
-            "fieldname": "from_date",
-            "label": __("From Date"),
-            "fieldtype": "Date",
-            // "default": frappe.datetime.add_days(frappe.datetime.nowdate(), -30)
+            fieldname: "country",
+            label: __("Country"),
+            fieldtype: "Link",
+            options: "Territory"
         },
         {
-            "fieldname": "to_date",
-            "label": __("To Date"),
-            "fieldtype": "Date",
-            // "default": frappe.datetime.nowdate()
+            fieldname: "salesperson",
+            label: __("Salesperson"),
+            fieldtype: "Link",
+            options: "Sales Person"
+        },
+        {
+            fieldname: "from_date",
+            label: __("From Date"),
+            fieldtype: "Date"
+        },
+        {
+            fieldname: "to_date",
+            label: __("To Date"),
+            fieldtype: "Date"
         }
     ]
 };

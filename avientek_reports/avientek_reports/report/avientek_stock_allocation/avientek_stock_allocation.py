@@ -149,96 +149,111 @@ def make_po_pending_map(item_codes):
         out[r.item_code][r.company] = flt(r.pend)
     return out
 
+def clone_qty_map(src):
+    """
+    Deep-copy { item_code: { company: qty } }  into a fresh
+    defaultdict(dict) so we can subtract allocated stock row-by-row
+    without touching the original totals.
+    """
+    out = defaultdict(dict)
+    for item, co_dict in src.items():
+        for company, qty in co_dict.items():
+            out[item][company] = flt(qty)
+    return out
 
-# ===========================================================
-#  Main data assembly
-# ===========================================================
+# =====================================================================
+#  Main data assembly –  Total-Demand now equals Bin.ordered_qty
+# =====================================================================
 def get_data(filters):
-
-    # --------------- dynamic SO filters
+    # ------------------------------------------------ dynamic SO filter
     so_cond = []
     if filters.get("company"):
         so_cond.append("so.company = %(company)s")
     if filters.get("from_date") and filters.get("to_date"):
-        so_cond.append("so.transaction_date BETWEEN %(from_date)s AND %(to_date)s")
+        so_cond.append(
+            "so.transaction_date BETWEEN %(from_date)s AND %(to_date)s")
     if filters.get("item_code"):
         so_cond.append("soi.item_code = %(item_code)s")
-    where = " AND ".join(so_cond)
-    where = ("WHERE " + where) if where else ""
 
-    # --------------- fetch Sales Orders (+ minimal item fields)
+    where_so = ("WHERE " + " AND ".join(so_cond)) if so_cond else ""
+
+    # ------------------------------------------------ fetch SO lines
     sales_orders = frappe.db.sql(
         f"""
-        SELECT
-            so.transaction_date,
-            so.company,
-            so.name                       AS sales_order,
-            (SELECT st.sales_person FROM `tabSales Team` st WHERE st.parent = so.name LIMIT 1) AS sales_person,
-            so.customer_name,
-            (SELECT addr.country FROM `tabAddress` addr WHERE addr.name = so.customer_address LIMIT 1) AS country,
-            soi.item_code,
-            soi.part_number,
-            (SELECT item_name FROM `tabItem` WHERE name = soi.item_code) AS item_name,
-            soi.brand,
-            soi.qty                        AS sales_order_qty,
-            soi.delivered_qty,
-            (soi.qty - soi.delivered_qty)  AS balance_qty,
-            soi.purchase_order             AS po_number,
-            (SELECT po.transaction_date FROM `tabPurchase Order` po WHERE po.name = soi.purchase_order LIMIT 1) AS po_date
-        FROM `tabSales Order` so
-        JOIN `tabSales Order Item` soi ON soi.parent = so.name
-        {where}
-        AND so.docstatus = 1
+        SELECT  so.transaction_date, so.company, so.name AS sales_order,
+                (SELECT st.sales_person
+                   FROM `tabSales Team` st WHERE st.parent = so.name LIMIT 1)   AS sales_person,
+                so.customer_name,
+                (SELECT addr.country FROM `tabAddress` addr
+                  WHERE addr.name = so.customer_address LIMIT 1)               AS country,
+                soi.item_code, soi.part_number,
+                (SELECT item_name FROM `tabItem` WHERE name = soi.item_code)   AS item_name,
+                soi.brand, soi.qty AS sales_order_qty,
+                soi.delivered_qty,
+                (soi.qty - soi.delivered_qty) AS balance_qty,
+                soi.purchase_order AS po_number,
+                (SELECT po.transaction_date FROM `tabPurchase Order` po
+                  WHERE po.name = soi.purchase_order LIMIT 1)                  AS po_date
+          FROM `tabSales Order` so
+          JOIN `tabSales Order Item` soi ON soi.parent = so.name
+        {where_so}
+          AND so.docstatus = 1
         """,
         filters,
         as_dict=True,
     )
-
     if not sales_orders:
         return []
 
-    # --------------- prepare helper maps
+    # ------------------------------------------------ helper lists / maps
     item_codes = list({row.item_code for row in sales_orders})
 
-    stock_map  = make_bin_map(item_codes)     # item>company -> wh_qty
-    fifo_map   = make_fifo_map(item_codes)    # item>company -> lots
-    po_map     = make_po_pending_map(item_codes)  # item>company -> pending PO qty
-
-    # demanded qty per (item, company)
-    demand_rows = frappe.db.sql(
+    # 1) Bin aggregates (matches item dashboard)
+    bin_rows = frappe.db.sql(
         f"""
-        SELECT
-            soi.item_code,
-            so.company,
-            SUM(soi.qty) AS total_dem
-        FROM `tabSales Order` so
-        JOIN `tabSales Order Item` soi ON soi.parent = so.name
-        WHERE soi.item_code IN ({", ".join(["%s"]*len(item_codes))})
-          AND so.docstatus = 1
-        GROUP BY soi.item_code, so.company
+        SELECT  B.item_code,
+                W.company,
+                SUM(B.actual_qty)    AS wh_qty,
+                SUM(B.reserved_qty)  AS dem_qty,
+                SUM(B.ordered_qty)   AS ord_qty
+          FROM `tabBin` B
+          JOIN `tabWarehouse` W ON W.name = B.warehouse
+         WHERE B.item_code IN ({", ".join(["%s"] * len(item_codes))})
+           AND W.name NOT LIKE '%%RMA%%'
+           AND W.name NOT LIKE '%%DEMO%%'
+         GROUP BY B.item_code, W.company
         """,
         tuple(item_codes),
         as_dict=True,
     )
-    demand_map = defaultdict(dict)
-    for r in demand_rows:
-        demand_map[r.item_code][r.company] = flt(r.total_dem)
+    stock_map = defaultdict(dict)
+    for r in bin_rows:
+        stock_map[r.item_code][r.company] = {
+            "wh_qty":  flt(r.wh_qty),
+            "dem_qty": flt(r.dem_qty),
+            "ord_qty": flt(r.ord_qty),
+        }
 
-    # ordered qty against SO (pending) per SO line
+    # 2) FIFO lots for allocation
+    fifo_map   = make_fifo_map(item_codes)
+    stock_left = clone_qty_map({
+        it: {co: v["wh_qty"] for co, v in comp.items()}
+        for it, comp in stock_map.items()
+    })
+
+    # 3) ordered-against-SO (pending)
     so_ordered_pending = {}
-    if sales_orders:
-        so_names = [row.sales_order for row in sales_orders]
+    so_names = [r.sales_order for r in sales_orders]
+    if so_names:
         rows = frappe.db.sql(
             f"""
-            SELECT
-                poi.sales_order,
-                poi.item_code,
-                SUM(poi.qty - poi.received_qty) AS pend_so
-            FROM `tabPurchase Order Item` poi
-            JOIN `tabPurchase Order` po ON po.name = poi.parent
-            WHERE poi.sales_order IN ({", ".join(["%s"]*len(so_names))})
-              AND po.docstatus = 1
-            GROUP BY poi.sales_order, poi.item_code
+            SELECT poi.sales_order, poi.item_code,
+                   SUM(poi.qty - poi.received_qty) AS pend_so
+              FROM `tabPurchase Order Item` poi
+              JOIN `tabPurchase Order` po ON po.name = poi.parent
+             WHERE poi.sales_order IN ({", ".join(["%s"] * len(so_names))})
+               AND po.docstatus = 1
+             GROUP BY poi.sales_order, poi.item_code
             """,
             tuple(so_names),
             as_dict=True,
@@ -246,74 +261,70 @@ def get_data(filters):
         for r in rows:
             so_ordered_pending[(r.sales_order, r.item_code)] = flt(r.pend_so)
 
-    # --------------- build rows
+    # ------------------------------------------------ build rows
     data = []
-
     for so in sales_orders:
+        comp, item = so.company, so.item_code
 
-        comp = so.company
-        item = so.item_code
+        bins = stock_map.get(item, {}).get(comp, {})
+        wh_qty_company = bins.get("wh_qty", 0)   # Total W/H Qty
+        total_demand   = bins.get("dem_qty", 0)  # Reserved Qty
+        total_ordered  = bins.get("ord_qty", 0)  # Ordered Qty (brackets)
 
-        wh_qty_company = stock_map[item].get(comp, 0)
-
-        # ---------- FIFO allocation (company-scoped)
-        lots = fifo_map[item].get(comp, [])
-        needed = so.balance_qty
+        # ---------- FIFO allocation (only if warehouse qty > 0)
         alloc = 0
-        for lot in lots:
-            if needed <= 0:
-                break
-            take = min(lot["qty"], needed)
-            alloc += take
-            needed -= take
-            lot["qty"] -= take
+        if wh_qty_company > 0:
+            lots   = fifo_map[item].get(comp, [])
+            needed = so.balance_qty
+            for lot in lots:
+                if needed <= 0 or alloc >= wh_qty_company:
+                    break
+                take   = min(lot["qty"], needed, wh_qty_company - alloc)
+                alloc += take
+                needed -= take
+                lot["qty"] -= take
+        # else alloc stays 0
 
-        # ---------- totals & balances
-        total_demand = demand_map[item].get(comp, 0)
-        total_ordered = po_map[item].get(comp, 0)
+        stock_left[item][comp] = wh_qty_company - alloc
+        wh_after_alloc = stock_left[item][comp]
+
         ordered_against_so = so_ordered_pending.get((so.sales_order, item), 0)
 
         balance_to_allocate = so.balance_qty - alloc
-        wh_after_alloc      = wh_qty_company - alloc
         balance_to_order_so = so.balance_qty - ordered_against_so
         total_balance_order = total_demand - alloc - total_ordered
 
-        data.append(
-            {
-                "transaction_date":  so.transaction_date,
-                "company":           comp,
-                "sales_order":       so.sales_order,
-                "sales_person":      so.sales_person,
-                "customer":          so.customer_name,
-                "country":           so.country,
-                "brand":             so.brand,
-                "part_number":       so.part_number,
-                "item_code":         item,
-                "item_name":         so.item_name,
-
-                # demand / delivery
-                "total_demanded_qty": total_demand,
-                "sales_order_qty":    so.sales_order_qty,
-                "delivered_qty":      so.delivered_qty,
-                "balance_qty":        so.balance_qty,
-
-                # warehouse & allocation
-                "total_wh_qty":          wh_qty_company,
-                "allocated_qty":         alloc,
-                "balance_to_allocate":   balance_to_allocate,
-                "wh_qty_after_alloc":    wh_after_alloc,
-
-                # purchasing
-                "total_ordered_qty":          total_ordered,
-                "ordered_qty_against_so":     ordered_against_so,
-                "po_date":                    so.po_date,
-                "po_number":                  so.po_number,
-
-                # misc
-                "so_ref_number":              so.sales_order,
-                "balance_to_order_against_so": balance_to_order_so,
-                "total_balance_to_order":      total_balance_order,
-            }
-        )
+        data.append({
+            # identifiers
+            "transaction_date": so.transaction_date,
+            "company":          comp,
+            "sales_order":      so.sales_order,
+            "sales_person":     so.sales_person,
+            "customer":         so.customer_name,
+            "country":          so.country,
+            "brand":            so.brand,
+            "part_number":      so.part_number,
+            "item_code":        item,
+            "item_name":        so.item_name,
+            # demand / delivery
+            "total_demanded_qty": total_demand,
+            "sales_order_qty":    so.sales_order_qty,
+            "delivered_qty":      so.delivered_qty,
+            "balance_qty":        so.balance_qty,
+            # warehouse & allocation
+            "total_wh_qty":        wh_qty_company,
+            "allocated_qty":       alloc,
+            "balance_to_allocate": balance_to_allocate,
+            "wh_qty_after_alloc":  wh_after_alloc,
+            # purchasing
+            "total_ordered_qty":       total_ordered,
+            "ordered_qty_against_so":  ordered_against_so,
+            "po_date":                 so.po_date,
+            "po_number":               so.po_number,
+            # misc
+            "so_ref_number":              so.sales_order,
+            "balance_to_order_against_so": balance_to_order_so,
+            "total_balance_to_order":      total_balance_order,
+        })
 
     return data

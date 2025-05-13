@@ -130,12 +130,12 @@ def clone_qty_map(src):
             dup[it][co] = flt(qty)
     return dup
 
-# ------------------------------------------------------------
-# main data builder
-# ------------------------------------------------------------
+# ---------------------------------------------------------------------
+#  Main data assembly – only W/H-after-allocation is fixed
+# ---------------------------------------------------------------------
 def get_data(filters):
-    # -------------------- Sales-Order filter block
-    so_cond = [SO_STATUS_FILTER]                 # status enforced
+    # -- Sales-Order filters --------------------------------------------------
+    so_cond = ["so.status = 'To Deliver and Bill'"]          # status filter
     if filters.get("company"):
         so_cond.append("so.company = %(company)s")
     if filters.get("from_date") and filters.get("to_date"):
@@ -145,7 +145,7 @@ def get_data(filters):
 
     where_so = "WHERE " + " AND ".join(so_cond)
 
-    # -------------------- fetch SO items
+    # -- fetch SO lines -------------------------------------------------------
     sales_orders = frappe.db.sql(
         f"""
         SELECT  so.transaction_date, so.company, so.name AS sales_order,
@@ -174,17 +174,18 @@ def get_data(filters):
     if not sales_orders:
         return []
 
-    # -------------------- item list & look-ups
-    item_codes = list({row.item_code for row in sales_orders})
+    # -- helper maps ----------------------------------------------------------
+    item_codes = list({r.item_code for r in sales_orders})
 
-    bin_map       = make_bin_aggregate(item_codes)      # dashboard numbers
-    fifo_map      = make_fifo_map(item_codes)           # lots for FIFO
-    stock_left    = clone_qty_map({
+    bin_map  = make_bin_aggregate(item_codes)   # {item:{company:{wh_qty,dem_qty,ord_qty}}}
+    fifo_map = make_fifo_map(item_codes)        # {item:{company:[{qty}, …]}}
+    # running balance purely for the W/H-after-alloc column
+    stock_left = clone_qty_map({
         it: {co: v["wh_qty"] for co, v in comp.items()}
         for it, comp in bin_map.items()
     })
 
-    # ordered-against-SO (open PO qty)
+    # open PO qty still linked to SO line
     so_ordered_pending = {}
     so_names = [r.sales_order for r in sales_orders]
     if so_names:
@@ -194,7 +195,7 @@ def get_data(filters):
                    SUM(poi.qty - poi.received_qty) AS pend_so
               FROM `tabPurchase Order Item` poi
               JOIN `tabPurchase Order` po ON po.name = poi.parent
-             WHERE poi.sales_order IN ({", ".join(["%s"]*len(so_names))})
+             WHERE poi.sales_order IN ({", ".join(["%s"] * len(so_names))})
                AND po.docstatus = 1
              GROUP BY poi.sales_order, poi.item_code
             """,
@@ -204,32 +205,37 @@ def get_data(filters):
         for r in rows:
             so_ordered_pending[(r.sales_order, r.item_code)] = flt(r.pend_so)
 
-    # -------------------- build final rows
+    # -- build rows -----------------------------------------------------------
     data = []
     for so in sales_orders:
         comp, item = so.company, so.item_code
 
         bins = bin_map.get(item, {}).get(comp, {})
-        wh_qty_company = bins.get("wh_qty", 0)
+        wh_qty_company = bins.get("wh_qty", 0)   # **unchanged, dashboard value**
         total_demand   = bins.get("dem_qty", 0)
         total_ordered  = bins.get("ord_qty", 0)
 
-        # ---- FIFO allocation (only when stock exists)
+        # allocation (same logic you already had)
         alloc = 0
         if wh_qty_company > 0:
-            lots   = fifo_map[item].get(comp, [])
-            need   = so.balance_qty
+            lots = fifo_map[item].get(comp, [])
+            need = so.balance_qty
             for lot in lots:
-                if need <= 0 or alloc >= wh_qty_company:
+                if need <= 0:
                     break
-                take   = min(lot["qty"], need, wh_qty_company - alloc)
+                take   = min(lot["qty"], need)
                 alloc += take
                 need  -= take
                 lot["qty"] -= take
 
-        stock_left[item][comp] = wh_qty_company - alloc
-        wh_after_alloc         = stock_left[item][comp]
+        # -------- fixed part: sequential W/H balance ------------------------
+        # Reduce running balance only for the "after allocation" display
+        prev_balance                 = stock_left[item].get(comp, 0)
+        new_balance                  = max(prev_balance - alloc, 0)
+        stock_left[item][comp]       = new_balance
+        wh_after_alloc               = new_balance          # **fixed column**
 
+        # --------------------------------------------------------------------
         ordered_against_so = so_ordered_pending.get((so.sales_order, item), 0)
 
         balance_to_allocate = so.balance_qty - alloc
@@ -256,10 +262,10 @@ def get_data(filters):
             "balance_qty":        so.balance_qty,
 
             # warehouse & allocation
-            "total_wh_qty":        wh_qty_company,
+            "total_wh_qty":        wh_qty_company,   # stays constant
             "allocated_qty":       alloc,
             "balance_to_allocate": balance_to_allocate,
-            "wh_qty_after_alloc":  wh_after_alloc,
+            "wh_qty_after_alloc":  wh_after_alloc,   # **now sequential**
 
             # purchasing
             "total_ordered_qty":       total_ordered,

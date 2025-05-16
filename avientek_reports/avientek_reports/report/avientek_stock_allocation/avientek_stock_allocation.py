@@ -1,26 +1,26 @@
 # Copyright (c) 2025, QCS and contributors
-# For license information, please see license.txt
+# License information: see license.txt
 
 import frappe
 from frappe.utils import flt
 from collections import defaultdict
 
-# ------------------------------------------------------------
-# constants
-# ------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────
+#  CONSTANTS
+# ──────────────────────────────────────────────────────────────
 EXCLUDE_WH        = " AND W.name NOT LIKE '%%RMA%%' AND W.name NOT LIKE '%%DEMO%%' "
-SO_STATUS_FILTER  = "so.status = 'To Deliver and Bill'"     # <-- NEW
+SO_STATUS_FILTER  = "so.status = 'To Deliver and Bill'"         # only open SO that still need delivery / billing
 
-# ------------------------------------------------------------
-# report entry-point
-# ------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────
+#  REPORT ENTRY-POINT
+# ──────────────────────────────────────────────────────────────
 def execute(filters=None):
     filters = filters or {}
     return get_columns(), get_data(filters)
 
-# ------------------------------------------------------------
-# column metadata
-# ------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────
+#  COLUMN DEFINITIONS
+# ──────────────────────────────────────────────────────────────
 def get_columns():
     return [
         # header / id
@@ -36,22 +36,22 @@ def get_columns():
         {"label": "Item Name",        "fieldname": "item_name",            "fieldtype": "Data",     "width": 160},
 
         # demand / delivery
-        {"label": "Total Demanded Qty", "fieldname": "total_demanded_qty",    "fieldtype": "Float", "width": 120},
-        {"label": "Sales Order Qty",    "fieldname": "sales_order_qty",       "fieldtype": "Float", "width": 110},
-        {"label": "Delivered Qty",      "fieldname": "delivered_qty",         "fieldtype": "Float", "width": 110},
-        {"label": "Balance Qty",        "fieldname": "balance_qty",           "fieldtype": "Float", "width": 110},
+        {"label": "Total Demanded Qty", "fieldname": "total_demanded_qty", "fieldtype": "Float",   "width": 120},
+        {"label": "Sales Order Qty",    "fieldname": "sales_order_qty",    "fieldtype": "Float",   "width": 110},
+        {"label": "Delivered Qty",      "fieldname": "delivered_qty",      "fieldtype": "Float",   "width": 110},
+        {"label": "Balance Qty",        "fieldname": "balance_qty",        "fieldtype": "Float",   "width": 110},
 
         # warehouse / allocation
-        {"label": "Total W/H Qty",          "fieldname": "total_wh_qty",          "fieldtype": "Float", "width": 120},
-        {"label": "Allocated Qty (FIFO)",   "fieldname": "allocated_qty",         "fieldtype": "Float", "width": 130},
-        {"label": "Balance to Allocate",    "fieldname": "balance_to_allocate",   "fieldtype": "Float", "width": 130},
-        {"label": "W/H Qty After Allocation","fieldname": "wh_qty_after_alloc",  "fieldtype": "Float", "width": 150},
+        {"label": "Total W/H Qty",          "fieldname": "total_wh_qty",        "fieldtype": "Float", "width": 120},
+        {"label": "Allocated Qty (FIFO)",   "fieldname": "allocated_qty",       "fieldtype": "Float", "width": 130},
+        {"label": "Balance to Allocate",    "fieldname": "balance_to_allocate", "fieldtype": "Float", "width": 130},
+        {"label": "W/H Qty After Allocation","fieldname": "wh_qty_after_alloc", "fieldtype": "Float", "width": 150},
 
         # purchase orders
-        {"label": "Total Ordered Qty",          "fieldname": "total_ordered_qty",          "fieldtype": "Float", "width": 130},
-        {"label": "Ordered Qty Against SO",     "fieldname": "ordered_qty_against_so",     "fieldtype": "Float", "width": 150},
-        {"label": "PO Date",                    "fieldname": "po_date",                    "fieldtype": "Date",  "width": 100},
-        {"label": "PO Number",                  "fieldname": "po_number",                  "fieldtype": "Data",  "width": 120},
+        {"label": "Total Ordered Qty",      "fieldname": "total_ordered_qty",      "fieldtype": "Float", "width": 130},
+        {"label": "Ordered Qty Against SO", "fieldname": "ordered_qty_against_so", "fieldtype": "Float", "width": 150},
+        {"label": "PO Date",                "fieldname": "po_date",                "fieldtype": "Date",  "width": 100},
+        {"label": "PO Number",              "fieldname": "po_number",              "fieldtype": "Data",  "width": 120},
 
         # misc
         {"label": "SO Ref Number",              "fieldname": "so_ref_number",              "fieldtype": "Data",  "width": 120},
@@ -59,11 +59,12 @@ def get_columns():
         {"label": "Total Balance to Order",     "fieldname": "total_balance_to_order",      "fieldtype": "Float", "width": 150},
     ]
 
-# ------------------------------------------------------------
-# helper functions
-# ------------------------------------------------------------
+
+# ──────────────────────────────────────────────────────────────
+#  HELPER TABLE SNAPSHOTS
+# ──────────────────────────────────────────────────────────────
 def make_bin_aggregate(item_codes):
-    """Return   bins[item][company] = {wh_qty, dem_qty, ord_qty}"""
+    """dashboard-style totals:  {item: {company: {wh_qty, dem_qty, ord_qty}}}"""
     if not item_codes:
         return defaultdict(dict)
 
@@ -76,7 +77,7 @@ def make_bin_aggregate(item_codes):
                 SUM(B.ordered_qty)   AS ord_qty
           FROM `tabBin` B
           JOIN `tabWarehouse` W ON W.name = B.warehouse
-         WHERE B.item_code IN ({", ".join(["%s"]*len(item_codes))})
+         WHERE B.item_code IN ({", ".join(["%s"] * len(item_codes))})
            {EXCLUDE_WH}
          GROUP BY B.item_code, W.company
         """,
@@ -95,7 +96,7 @@ def make_bin_aggregate(item_codes):
 
 
 def make_fifo_map(item_codes):
-    """Return fifo[item][company] = list of lots (oldest first)"""
+    """{item: {company: [ {qty}, … ]}}  — lots sorted oldest-first"""
     if not item_codes:
         return defaultdict(dict)
 
@@ -107,7 +108,7 @@ def make_fifo_map(item_codes):
                 SLE.posting_date
           FROM `tabStock Ledger Entry` SLE
           JOIN `tabWarehouse` W ON W.name = SLE.warehouse
-         WHERE SLE.item_code IN ({", ".join(["%s"]*len(item_codes))})
+         WHERE SLE.item_code IN ({", ".join(["%s"] * len(item_codes))})
            AND SLE.actual_qty > 0
            {EXCLUDE_WH}
          ORDER BY W.company, SLE.item_code, SLE.posting_date
@@ -123,46 +124,50 @@ def make_fifo_map(item_codes):
 
 
 def clone_qty_map(src):
-    """Deep-copy {item:{company:qty}} → independent working copy."""
+    """deep copy of {item:{company:qty}}"""
     dup = defaultdict(dict)
     for it, comp_map in src.items():
         for co, qty in comp_map.items():
             dup[it][co] = flt(qty)
     return dup
 
-# ---------------------------------------------------------------------
-#  Main data assembly – only W/H-after-allocation is fixed
-# ---------------------------------------------------------------------
+
+# ──────────────────────────────────────────────────────────────
+#  MAIN DATA GATHER
+# ──────────────────────────────────────────────────────────────
 def get_data(filters):
-    # -- Sales-Order filters --------------------------------------------------
-    so_cond = ["so.status = 'To Deliver and Bill'"]          # status filter
+    # -------- build SO filter string ---------------------------------------
+    so_cond = [SO_STATUS_FILTER]                  # enforced status
     if filters.get("company"):
         so_cond.append("so.company = %(company)s")
     if filters.get("from_date") and filters.get("to_date"):
         so_cond.append("so.transaction_date BETWEEN %(from_date)s AND %(to_date)s")
     if filters.get("item_code"):
         so_cond.append("soi.item_code = %(item_code)s")
-
     where_so = "WHERE " + " AND ".join(so_cond)
 
-    # -- fetch SO lines -------------------------------------------------------
+    # -------- fetch Sales-Order item lines ---------------------------------
     sales_orders = frappe.db.sql(
         f"""
-        SELECT  so.transaction_date, so.company, so.name AS sales_order,
+        SELECT  so.transaction_date,
+                so.company,
+                so.name                                  AS sales_order,
                 (SELECT st.sales_person FROM `tabSales Team` st
-                  WHERE st.parent = so.name LIMIT 1)                        AS sales_person,
+                  WHERE st.parent = so.name LIMIT 1)     AS sales_person,
                 so.customer_name,
                 (SELECT addr.country FROM `tabAddress` addr
-                  WHERE addr.name = so.customer_address LIMIT 1)            AS country,
-                soi.item_code, soi.part_number,
-                (SELECT item_name FROM `tabItem` WHERE name = soi.item_code) AS item_name,
+                  WHERE addr.name = so.customer_address LIMIT 1) AS country,
+                soi.item_code,
+                soi.part_number,
+                (SELECT item_name FROM `tabItem`
+                  WHERE name = soi.item_code)            AS item_name,
                 soi.brand,
-                soi.qty                       AS sales_order_qty,
+                soi.qty                                  AS sales_order_qty,
                 soi.delivered_qty,
-                (soi.qty - soi.delivered_qty) AS balance_qty,
-                soi.purchase_order            AS po_number,
+                (soi.qty - soi.delivered_qty)            AS balance_qty,
+                soi.purchase_order                       AS po_number,
                 (SELECT po.transaction_date FROM `tabPurchase Order` po
-                  WHERE po.name = soi.purchase_order LIMIT 1)               AS po_date
+                  WHERE po.name = soi.purchase_order LIMIT 1)     AS po_date
           FROM `tabSales Order` so
           JOIN `tabSales Order Item` soi ON soi.parent = so.name
         {where_so}
@@ -174,24 +179,26 @@ def get_data(filters):
     if not sales_orders:
         return []
 
-    # -- helper maps ----------------------------------------------------------
+    # -------- helper maps ---------------------------------------------------
     item_codes = list({r.item_code for r in sales_orders})
 
-    bin_map  = make_bin_aggregate(item_codes)   # {item:{company:{wh_qty,dem_qty,ord_qty}}}
-    fifo_map = make_fifo_map(item_codes)        # {item:{company:[{qty}, …]}}
-    # running balance purely for the W/H-after-alloc column
+    bin_map   = make_bin_aggregate(item_codes)       # dashboard numbers
+    fifo_map  = make_fifo_map(item_codes)
     stock_left = clone_qty_map({
         it: {co: v["wh_qty"] for co, v in comp.items()}
         for it, comp in bin_map.items()
     })
 
-    # open PO qty still linked to SO line
+    # -----------------------------------------------------------------------
+    #  A) pending PO qty linked to SO line (modern link)
+    # -----------------------------------------------------------------------
     so_ordered_pending = {}
     so_names = [r.sales_order for r in sales_orders]
     if so_names:
         rows = frappe.db.sql(
             f"""
-            SELECT poi.sales_order, poi.item_code,
+            SELECT poi.sales_order,
+                   poi.item_code,
                    SUM(poi.qty - poi.received_qty) AS pend_so
               FROM `tabPurchase Order Item` poi
               JOIN `tabPurchase Order` po ON po.name = poi.parent
@@ -205,17 +212,42 @@ def get_data(filters):
         for r in rows:
             so_ordered_pending[(r.sales_order, r.item_code)] = flt(r.pend_so)
 
-    # -- build rows -----------------------------------------------------------
+    # -----------------------------------------------------------------------
+    #  B) fallback PO info via  Purchase Order.custom_so_reference  (legacy)
+    # -----------------------------------------------------------------------
+    po_fallback = {}                          # (so_name, item) → {"po":…, "date":…}
+    if so_names:
+        rows = frappe.db.sql(
+            f"""
+            SELECT po.custom_so_reference AS so_name,
+                   poi.item_code,
+                   po.name                 AS po_name,
+                   po.transaction_date     AS po_date
+              FROM `tabPurchase Order`       po
+              JOIN `tabPurchase Order Item`  poi  ON poi.parent = po.name
+             WHERE po.custom_so_reference IN ({", ".join(["%s"] * len(so_names))})
+               AND po.docstatus = 1
+             ORDER BY po.transaction_date, po.creation
+            """,
+            tuple(so_names),
+            as_dict=True,
+        )
+        for r in rows:
+            key = (r.so_name, r.item_code)
+            # keep the *oldest* fallback PO only (first row encountered)
+            po_fallback.setdefault(key, {"po": r.po_name, "date": r.po_date})
+
+    # -------- build report rows --------------------------------------------
     data = []
     for so in sales_orders:
         comp, item = so.company, so.item_code
 
         bins = bin_map.get(item, {}).get(comp, {})
-        wh_qty_company = bins.get("wh_qty", 0)   # **unchanged, dashboard value**
+        wh_qty_company = bins.get("wh_qty", 0)
         total_demand   = bins.get("dem_qty", 0)
         total_ordered  = bins.get("ord_qty", 0)
 
-        # allocation (same logic you already had)
+        # FIFO allocation against company stock
         alloc = 0
         if wh_qty_company > 0:
             lots = fifo_map[item].get(comp, [])
@@ -228,22 +260,26 @@ def get_data(filters):
                 need  -= take
                 lot["qty"] -= take
 
-        # -------- fixed part: sequential W/H balance ------------------------
-        # Reduce running balance only for the "after allocation" display
-        prev_balance                 = stock_left[item].get(comp, 0)
-        new_balance                  = max(prev_balance - alloc, 0)
-        stock_left[item][comp]       = new_balance
-        wh_after_alloc               = new_balance          # **fixed column**
+        # sequential “after allocation” balance
+        prev_bal   = stock_left[item].get(comp, 0)
+        new_bal    = max(prev_bal - alloc, 0)
+        stock_left[item][comp] = new_bal
 
-        # --------------------------------------------------------------------
-        ordered_against_so = so_ordered_pending.get((so.sales_order, item), 0)
+        # PO number / date : try SO-Item link → fallback
+        po_num  = so.po_number
+        po_date = so.po_date
+        if not po_num:
+            fb = po_fallback.get((so.sales_order, item))
+            if fb:
+                po_num, po_date = fb["po"], fb["date"]
 
-        balance_to_allocate = so.balance_qty - alloc
-        balance_to_order_so = so.balance_qty - ordered_against_so
-        total_balance_order = total_demand - alloc - total_ordered
+        ordered_against_so   = so_ordered_pending.get((so.sales_order, item), 0)
+        balance_to_allocate  = so.balance_qty - alloc
+        balance_to_order_so  = so.balance_qty - ordered_against_so
+        total_balance_order  = total_demand - alloc - total_ordered
 
         data.append({
-            # identifiers
+            # id
             "transaction_date": so.transaction_date,
             "company":          comp,
             "sales_order":      so.sales_order,
@@ -262,19 +298,19 @@ def get_data(filters):
             "balance_qty":        so.balance_qty,
 
             # warehouse & allocation
-            "total_wh_qty":        wh_qty_company,   # stays constant
+            "total_wh_qty":        wh_qty_company,
             "allocated_qty":       alloc,
             "balance_to_allocate": balance_to_allocate,
-            "wh_qty_after_alloc":  wh_after_alloc,   # **now sequential**
+            "wh_qty_after_alloc":  new_bal,
 
             # purchasing
             "total_ordered_qty":       total_ordered,
             "ordered_qty_against_so":  ordered_against_so,
-            "po_date":                 so.po_date,
-            "po_number":               so.po_number,
+            "po_date":                 po_date,
+            "po_number":               po_num,
 
             # misc
-            "so_ref_number":              so.sales_order,
+            "so_ref_number":               so.sales_order,
             "balance_to_order_against_so": balance_to_order_so,
             "total_balance_to_order":      total_balance_order,
         })

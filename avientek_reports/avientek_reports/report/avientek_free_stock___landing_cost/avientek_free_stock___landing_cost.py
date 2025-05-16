@@ -228,15 +228,15 @@ def build_columns(companies):
     # metrics that repeat per company
     sub = [
         ("W/H Qty",     "wh_stock_qty",  "Float"),
-        ("W/H $",       "wh_stock_val",  "Currency"),
+        ("W/H Value",       "wh_stock_val",  "Currency"),
         ("Ordered Qty", "ordered_qty",   "Float"),
-        ("Ordered $",   "ordered_val",   "Currency"),
+        ("Ordered Value",   "ordered_val",   "Currency"),
         ("Demand Qty",  "demand_qty",    "Float"),
-        ("Demand $",    "demand_val",    "Currency"),
+        ("Demand Value",    "demand_val",    "Currency"),
         ("Free Qty",    "free_qty",      "Float"),
-        ("Free $",      "free_val",      "Currency"),
+        ("Free Value",      "free_val",      "Currency"),
         ("Net Free Qty","net_free_qty",  "Float"),
-        ("Net Free $",  "net_free_val",  "Currency"),
+        ("Net Free Value",  "net_free_val",  "Currency"),
     ]
 
     #  ✓  Unit-price column at the **start** of each company block

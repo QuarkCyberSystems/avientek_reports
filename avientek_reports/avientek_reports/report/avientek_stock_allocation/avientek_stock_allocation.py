@@ -253,8 +253,12 @@ def get_data(filters):
             key = (so.sales_order, item)
             g_tot, g_open = fallback_po_tot.get(key, 0), fallback_po_open.get(key, 0)
             if g_tot:
-                share = so.sales_order_qty / so_item_qty_sum[key]
-                ordered_qty_so  = flt(g_tot * share)
+                # Calculate proportional share of total ordered qty and open qty, checking for zero division
+                if so_item_qty_sum[key] != 0:
+                    share = so.sales_order_qty / so_item_qty_sum[key]
+                else:
+                    share = 0  # Default to 0 or handle accordingly
+                ordered_qty_so = flt(g_tot * share)
                 ordered_open_so = flt(g_open * share)
             else:
                 ordered_qty_so = ordered_open_so = 0

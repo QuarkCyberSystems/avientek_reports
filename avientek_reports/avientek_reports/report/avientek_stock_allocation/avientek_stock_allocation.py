@@ -246,6 +246,8 @@ def get_data(filters):
         balance_to_allocate = so.balance_qty - alloc
 
         # line-level PO figures
+        po_num = None  # Initialize po_num here
+        po_date = None  # Initialize po_date here
         if so.so_detail and so.so_detail in line_po_tot:
             ordered_qty_so  = line_po_tot[so.so_detail]
             ordered_open_so = line_po_tot[so.so_detail] - line_po_open.get(so.so_detail, 0)  # Correct calculation for open qty
@@ -262,6 +264,24 @@ def get_data(filters):
                 ordered_open_so = flt(g_open * share)
             else:
                 ordered_qty_so = ordered_open_so = 0
+
+        # Fetch PO number and PO date based on Sales Order reference
+        if not po_num:
+            hdr = frappe.db.sql(
+                """
+                SELECT po.name, po.transaction_date
+                  FROM `tabPurchase Order` po
+                  JOIN `tabPurchase Order Item` poi ON poi.parent = po.name
+                 WHERE po.docstatus = 1
+                   AND poi.sales_order = %s
+                   AND poi.item_code = %s
+                 ORDER BY po.transaction_date, po.creation
+                 LIMIT 1
+                """, (so.sales_order, item), as_dict=True
+            )
+            if hdr:
+                po_num = hdr[0].name  # Correctly set PO number
+                po_date = hdr[0].transaction_date  # Set PO date if PO number exists
 
         # balances
         balance_to_order_against_so = ordered_qty_so + wh_after_alloc - balance_to_allocate
@@ -293,8 +313,8 @@ def get_data(filters):
             "total_ordered_qty":           total_ordered,
             "ordered_qty_against_so":      ordered_qty_so,
             "ordered_open_qty_against_so": ordered_open_so,
-            "po_date":                     so.po_date,
-            "po_number":                   so.po_number,
+            "po_date":                     po_date,  # PO date fetched only if PO number exists
+            "po_number":                   po_num,  # Correctly fetched PO number
 
             "so_ref_number":               so.sales_order,
             "balance_to_order_against_so": balance_to_order_against_so,

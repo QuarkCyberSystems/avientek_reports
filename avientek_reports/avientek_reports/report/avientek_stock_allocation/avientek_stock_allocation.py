@@ -127,8 +127,27 @@ def get_data(filters):
         so_cond.append("so.transaction_date BETWEEN %(from_date)s AND %(to_date)s")
     if filters.get("item_code"):
         so_cond.append("soi.item_code = %(item_code)s")
-    where_so = "WHERE " + " AND ".join(so_cond)
+    if filters.get("sales_person"):
+        so_cond.append("""
+            EXISTS ( SELECT 1 FROM `tabSales Team` st
+                    WHERE st.parent = so.name
+                        AND st.sales_person = %(sales_person)s )
+        """)
+    if filters.get("customer"):
+        so_cond.append("so.customer = %(customer)s")
 
+    if filters.get("customer_name"):
+        so_cond.append("so.customer_name = %(customer_name)s")
+
+    if filters.get("parent_sales_person"):
+        so_cond.append("""
+            EXISTS ( SELECT 1 FROM `tabSales Team` st
+                    WHERE st.parent = so.name
+                        AND st.custom_parent_sales_person = %(parent_sales_person)s )
+        """)
+    where_so = "WHERE " + " AND ".join(so_cond)
+    
+    
     sales_orders = frappe.db.sql(
         f"""
         SELECT  so.transaction_date, so.company,

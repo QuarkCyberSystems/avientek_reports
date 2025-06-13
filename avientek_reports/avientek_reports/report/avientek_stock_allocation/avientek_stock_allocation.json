@@ -10,7 +10,7 @@
  "is_standard": "Yes",
  "letter_head": "LH",
  "letterhead": null,
- "modified": "2025-03-26 11:10:49.880035",
+ "modified": "2025-06-13 11:36:28.432466",
  "modified_by": "Administrator",
  "module": "Avientek Reports",
  "name": "Avientek Stock Allocation",
@@ -27,28 +27,25 @@
    "role": "Sales Manager"
   },
   {
-   "role": "Maintenance User"
+   "role": "Sales User-Custom (Read)"
+  },
+  {
+   "role": "Stock Manager"
   },
   {
    "role": "Stock User"
   },
   {
-   "role": "Accounts User"
+   "role": "Purchase Manager"
   },
   {
-   "role": "Channel Sales Manager L1"
+   "role": "Purchase User"
   },
   {
-   "role": "Sales Support L2"
+   "role": "Purchase User-Custom (Create)"
   },
   {
-   "role": "Finance Controller"
-  },
-  {
-   "role": "Sales User-Custom (Read)"
-  },
-  {
-   "role": "CSM"
+   "role": "Purchase User-Custom (Read)"
   }
  ],
  "timeout": 0

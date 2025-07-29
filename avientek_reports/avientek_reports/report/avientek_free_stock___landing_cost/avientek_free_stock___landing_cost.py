@@ -1,5 +1,5 @@
-# Copyright (c) 2025, QCS
-# Licence information: see licence.txt
+# Copyright (c) 2025, QCS
+# Licence information: see licence.txt
 
 import re
 from collections import defaultdict
@@ -7,57 +7,46 @@ import frappe
 from frappe.utils import flt
 
 # ──────────────────────────────────────────────────────────────
-# CONSTANTS & UTILITIES
+# CONSTANTS & SETTINGS
 # ──────────────────────────────────────────────────────────────
 EXCLUDE_WH = (
     " AND W.name NOT LIKE '%%RMA%%' "
     "AND W.name NOT LIKE '%%DEMO%%' "
 )
 
-REPORT_CCY      = "USD"                    # display currency
-REPORT_CCY_KEY  = "report_currency"        # referenced by all Currency columns
-_safe           = lambda t: re.sub(r"[^A-Za-z0-9]+", "_", t).strip("_")
+REPORT_CCY      = "USD"            # display currency
+REPORT_CCY_KEY  = "report_currency"
 
-# -------------------------------------------------------------
-# live AED → USD factor (fallback to fixed 3.673 peg)
-# -------------------------------------------------------------
-def _aed_to_usd() -> float:
-    row = frappe.db.sql(
-        """
-        SELECT exchange_rate
-        FROM   `tabCurrency Exchange`
-        WHERE  from_currency = 'USD' AND to_currency = 'AED'
-        ORDER  BY date DESC, creation DESC
-        LIMIT 1
-        """,
-        as_dict=True,
-    )
-    return 1 / flt(row[0].exchange_rate or 3.673) if row else 1 / 3.673
+# Fixed‑rate rules
+INDIAN_CO            = "Avientek Electronics Trading PVT. LTD"
+AED_TO_USD_FIXED     = 1 / 3.6725          # ≈ 0.272309
+INR_TO_USD_FIXED     = 1 / 87.0            # ≈ 0.011494
 
-AED_TO_USD = _aed_to_usd()     # ≈ 0 .2723
+# Helper to build safe fieldnames per‑company
+_safe = lambda t: re.sub(r"[^A-Za-z0-9]+", "_", t).strip("_")
 
 
 # ===========================================================
-#  REPORT ENTRY-POINT
+#  REPORT ENTRY‑POINT
 # ===========================================================
 def execute(filters=None):
     filters = filters or {}
 
-    item_map   = _get_items(filters)
+    item_map = _get_items(filters)
     if not item_map:
         return [], []
     item_codes = list(item_map)
 
-    bin_rows   = _get_bin_rows(item_codes)
+    bin_rows = _get_bin_rows(item_codes)
     if not bin_rows:
         return [], []
 
     bin_sum, companies = _aggregate_bins(bin_rows)
     lc_rate            = _get_landed_cost(item_codes, companies)      # stored **in AED**
 
-    cols  = _build_columns(companies)
-    data  = _build_rows(item_map, bin_sum, lc_rate, companies)
-    data  = _scrub_zero_rows(cols, data)
+    cols = _build_columns(companies)
+    data = _build_rows(item_map, bin_sum, lc_rate, companies)
+    data = _scrub_zero_rows(cols, data)
 
     return cols, data
 
@@ -97,7 +86,7 @@ def _get_items(flt):
 
 
 # ===========================================================
-#  BIN rows (RMA/DEMO filtered)
+#  BIN rows  (RMA / DEMO filtered)
 # ===========================================================
 def _get_bin_rows(item_codes):
     ph = ", ".join(["%s"] * len(item_codes))
@@ -157,9 +146,12 @@ def _aggregate_bins(rows):
 #  LANDED COST per company  (stored in AED)
 # ===========================================================
 def _get_landed_cost(codes, companies):
+    """
+    Return dict[item_code][company] = landed‑cost rate (in AED)
+    """
     rate = defaultdict(lambda: defaultdict(float))
 
-    # 1) weighted stock-average
+    # 1) weighted stock‑average
     stock = frappe.db.sql(
         f"""
         SELECT  B.item_code, W.company,
@@ -223,7 +215,7 @@ def _build_columns(companies):
         {"label": "Model",       "fieldname": "model",      "width": 120},
         {"label": "Description", "fieldname": "description","width": 150},
         {
-            "label": "Unit Price (Avg Landed)",
+            "label": "Unit Price (Avg Landed)",
             "fieldname": "unit_price",
             "fieldtype": "Currency",
             "options":  REPORT_CCY_KEY,
@@ -280,73 +272,81 @@ def _build_columns(companies):
 #  BUILD DATA ROWS
 # ===========================================================
 def _build_rows(item_map, bin_sum, lc_rate, companies):
-    def money(qty, rate_aed):  # convert exactly once here
-        return qty * rate_aed * AED_TO_USD
+    def money(qty: float, unit_rate: float, company: str) -> float:
+        """
+        Convert `qty × unit_rate` from the company’s base currency to USD
+        using hard‑wired factors:
+          • AED companies      → 3.6725
+          • IN Avientek        → 87
+        """
+        fx = AED_TO_USD_FIXED if company != INDIAN_CO else INR_TO_USD_FIXED
+        return qty * unit_rate * fx
 
     rows = []
 
     for it, meta in item_map.items():
         row = {
-            REPORT_CCY_KEY: REPORT_CCY,  # Currency columns rely on this
+            REPORT_CCY_KEY: REPORT_CCY,
             "brand_type": meta.brand_type,
             "brand_name": meta.brand_name,
             "item_code": it,
             "part_number": meta.part_number,
             "model": meta.model,
             "description": meta.description,
-            "unit_price": 0.0,  # will compute overall avg next
+            "unit_price": 0.0,  # calculated later
         }
 
-        tot = defaultdict(float)
-        total_unit_price = 0.0
-        total_qty = 0.0
+        tot            = defaultdict(float)
+        total_qty      = 0.0   # for overall avg unit price
+        total_stockval = 0.0
 
         for co in companies:
-            sk = _safe(co)
+            sk  = _safe(co)
             agg = bin_sum[it][co]
-            act = flt(agg["actual"])
-            ord_ = flt(agg["ordered"])
-            res = flt(agg["reserved"])
-            ind = flt(agg["indented"])
-            val_qty = flt(agg["val_qty"])
-            val_val = flt(agg["val_val"])
 
-            demand = res + ind
-            free = act - res
-            net_free = free + ord_ - demand
+            act    = flt(agg["actual"])
+            ord_   = flt(agg["ordered"])
+            res    = flt(agg["reserved"])
+            ind    = flt(agg["indented"])
+            valqty = flt(agg["val_qty"])
+            valval = flt(agg["val_val"])
 
-            # ✅ Derive company-wise unit price from stock value (valuation-based)
-            unit_price = (val_val / val_qty * AED_TO_USD) if val_qty else 0.0
+            demand    = res + ind
+            free      = act - res
+            net_free  = free + ord_ - demand
+            lc_aed    = lc_rate[it][co]
+            unit_aed  = valval / valqty if valqty else 0.0
 
-            row[f"{sk}_unit_price"] = money(act, val_val / val_qty) if val_qty else 0.0
+            # Company‑specific conversions
+            row[f"{sk}_unit_price"]   = money(act, unit_aed, co) if valqty else 0.0
             row[f"{sk}_wh_stock_qty"] = act
-            row[f"{sk}_wh_stock_val"] = money(act, val_val / val_qty) if val_qty else 0.0
-            row[f"{sk}_ordered_qty"] = ord_
-            row[f"{sk}_ordered_val"] = money(ord_, lc_rate[it][co])
-            row[f"{sk}_demand_qty"] = demand
-            row[f"{sk}_demand_val"] = money(demand, lc_rate[it][co])
-            row[f"{sk}_free_qty"] = free
-            row[f"{sk}_free_val"] = money(free, lc_rate[it][co])
+            row[f"{sk}_wh_stock_val"] = money(act, unit_aed, co) if valqty else 0.0
+            row[f"{sk}_ordered_qty"]  = ord_
+            row[f"{sk}_ordered_val"]  = money(ord_, lc_aed, co)
+            row[f"{sk}_demand_qty"]   = demand
+            row[f"{sk}_demand_val"]   = money(demand, lc_aed, co)
+            row[f"{sk}_free_qty"]     = free
+            row[f"{sk}_free_val"]     = money(free, lc_aed, co)
             row[f"{sk}_net_free_qty"] = net_free
-            row[f"{sk}_net_free_val"] = money(net_free, lc_rate[it][co])
+            row[f"{sk}_net_free_val"] = money(net_free, lc_aed, co)
 
-            # grand totals (USD)
+            # Totals (already USD)
             tot["wh_stock_qty"] += act
             tot["wh_stock_val"] += row[f"{sk}_wh_stock_val"]
-            tot["ordered_qty"] += ord_
-            tot["ordered_val"] += row[f"{sk}_ordered_val"]
-            tot["demand_qty"] += demand
-            tot["demand_val"] += row[f"{sk}_demand_val"]
-            tot["free_qty"] += free
-            tot["free_val"] += row[f"{sk}_free_val"]
+            tot["ordered_qty"]  += ord_
+            tot["ordered_val"]  += row[f"{sk}_ordered_val"]
+            tot["demand_qty"]   += demand
+            tot["demand_val"]   += row[f"{sk}_demand_val"]
+            tot["free_qty"]     += free
+            tot["free_val"]     += row[f"{sk}_free_val"]
             tot["net_free_qty"] += net_free
             tot["net_free_val"] += row[f"{sk}_net_free_val"]
 
-            total_unit_price +=  row[f"{sk}_unit_price"]
-            total_qty += act
+            total_qty      += act
+            total_stockval += row[f"{sk}_wh_stock_val"]
 
         # average unit price across companies (weighted by actual stock)
-        row["unit_price"] = (total_unit_price / total_qty) if total_qty else 0.0
+        row["unit_price"] = (total_stockval / total_qty) if total_qty else 0.0
 
         for k, v in tot.items():
             row[f"total_{k}"] = v
@@ -357,7 +357,7 @@ def _build_rows(item_map, bin_sum, lc_rate, companies):
 
 
 # ===========================================================
-#  DROP ALL-ZERO ROWS
+#  DROP ALL‑ZERO ROWS
 # ===========================================================
 def _scrub_zero_rows(columns, rows):
     numeric = [

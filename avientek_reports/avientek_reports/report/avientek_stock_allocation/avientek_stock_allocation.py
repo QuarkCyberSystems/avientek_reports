@@ -37,6 +37,11 @@ def get_columns():
         {"label": "Part Number",        "fieldname": "part_number",                   "fieldtype": "Data",     "width": 120},
         {"label": "Item Code",          "fieldname": "item_code",                     "fieldtype": "Link",     "options": "Item", "width": 110},
         {"label": "Item Name",          "fieldname": "item_name",                     "fieldtype": "Data",     "width": 160},
+        {"label": "Net Rate",          "fieldname": "net_rate",                       "fieldtype": "Currency", "width": 110},
+        {"label": "Net Rate(Company Currency)",     "fieldname": "base_net_rate",     "fieldtype": "Currency", "width": 120},
+        {"label": "Net Amount",        "fieldname": "net_amount",                     "fieldtype": "Currency", "width": 120},
+        {"label": "Net Amount(Company Currency)",   "fieldname": "base_net_amount",    "fieldtype": "Currency", "width": 130},
+
 
         # ── demand / delivery ───────────────────────
         {"label": "Total Demanded Qty", "fieldname": "total_demanded_qty",            "fieldtype": "Float",   "width": 120},
@@ -118,6 +123,19 @@ def clone_qty_map(src):
 # MAIN DATA
 # ──────────────────────────────────────────────────────────────
 def get_data(filters):
+    if not filters.get("sales_person"):
+        allowed_sales_persons = frappe.get_all(
+            "Sales Person",
+            filters={},  # You can add additional filters here
+            pluck="name",
+            ignore_permissions=False  # Only fetch what the user has access to
+        )
+
+        if len(allowed_sales_persons) == 1:
+            filters["sales_person"] = allowed_sales_persons[0]
+        elif len(allowed_sales_persons) > 1:
+            filters["sales_person"] = allowed_sales_persons  # list for IN clause
+
 
     # ---- Sales-Order items (capture soi.name for linking) --------------
     so_cond = [SO_STATUS_FILTER]
@@ -128,11 +146,22 @@ def get_data(filters):
     if filters.get("item_code"):
         so_cond.append("soi.item_code = %(item_code)s")
     if filters.get("sales_person"):
-        so_cond.append("""
-            EXISTS ( SELECT 1 FROM `tabSales Team` st
+        if isinstance(filters["sales_person"], list):
+            so_cond.append("""
+                EXISTS (
+                    SELECT 1 FROM `tabSales Team` st
                     WHERE st.parent = so.name
-                        AND st.sales_person = %(sales_person)s )
-        """)
+                      AND st.sales_person IN %(sales_person)s
+                )
+            """)
+        else:
+            so_cond.append("""
+                EXISTS (
+                    SELECT 1 FROM `tabSales Team` st
+                    WHERE st.parent = so.name
+                      AND st.sales_person = %(sales_person)s
+                )
+            """)
     if filters.get("customer"):
         so_cond.append("so.customer = %(customer)s")
 
@@ -165,6 +194,8 @@ def get_data(filters):
                 soi.qty                       AS sales_order_qty,
                 soi.delivered_qty,
                 (soi.qty - soi.delivered_qty) AS balance_qty,
+                soi.net_rate,soi.base_net_rate,
+                soi.net_amount,soi.base_net_amount,
                 soi.purchase_order            AS po_number,
                 (SELECT po.transaction_date   FROM `tabPurchase Order` po
                   WHERE po.name = soi.purchase_order LIMIT 1) AS po_date
@@ -318,6 +349,10 @@ def get_data(filters):
             "part_number":      so.part_number,
             "item_code":        item,
             "item_name":        so.item_name,
+            "net_rate":         so.net_rate,
+            "base_net_rate":    so.base_net_rate,
+            "net_amount":       so.net_amount,
+            "base_net_amount":  so.base_net_amount,
 
             "total_demanded_qty": total_demand,
             "sales_order_qty":    so.sales_order_qty,

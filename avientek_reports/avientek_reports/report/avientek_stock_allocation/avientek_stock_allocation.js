@@ -18,8 +18,7 @@ frappe.query_reports["Avientek Stock Allocation"] = {
             label: __("Company"),
             fieldtype: "Link",
             options: "Company",
-            default: frappe.defaults.get_user_default("Company"),
-			reqd: 1,
+            default: frappe.defaults.get_user_default("Company")
         },
         {
             fieldname: "item_code",
@@ -27,12 +26,13 @@ frappe.query_reports["Avientek Stock Allocation"] = {
             fieldtype: "Link",
             options: "Item"
         },
-        // ───── NEW ─────────────────────────────────────────────
         {
             fieldname: "sales_person",
             label: __("Sales Person"),
             fieldtype: "Link",
-            options: "Sales Person"
+            options: "Sales Person",
+            default: frappe.defaults.get_user_default("Sales Person")
+            
         },
         {
             fieldname: "customer",

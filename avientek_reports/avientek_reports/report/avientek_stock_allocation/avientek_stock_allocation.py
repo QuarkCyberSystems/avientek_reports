@@ -59,7 +59,7 @@ def get_columns():
     ]
 
 # ──────────────────────────────────────────────────────────────
-# STOCK / BIN HELPERS
+# HELPER FUNCTIONS
 # ──────────────────────────────────────────────────────────────
 def make_bin_aggregate(item_codes):
     rows = frappe.db.sql(
@@ -109,9 +109,6 @@ def clone_qty_map(src):
             dup[it][co] = flt(qty)
     return dup
 
-# ──────────────────────────────────────────────────────────────
-# MAIN DATA
-# ──────────────────────────────────────────────────────────────
 def get_user_permission_values(user, doctype):
     """Fetch user permission values for a specific doctype."""
     return frappe.db.get_all(
@@ -120,60 +117,99 @@ def get_user_permission_values(user, doctype):
         pluck="for_value"
     )
 
+# ──────────────────────────────────────────────────────────────
+# MAIN DATA
+# ──────────────────────────────────────────────────────────────
 def get_data(filters):
     # Get user permissions
     allowed_companies = get_user_permission_values(frappe.session.user, "Company")
     allowed_sales_persons = get_user_permission_values(frappe.session.user, "Sales Person")
 
-    # Apply filters based on permissions
-    if allowed_companies:
-        filters["company"] = allowed_companies if len(allowed_companies) > 1 else allowed_companies[0]
-
-    if allowed_sales_persons:
-        filters["sales_person"] = allowed_sales_persons if len(allowed_sales_persons) > 1 else allowed_sales_persons[0]
-
-    # ---- Sales-Order items
     so_cond = [SO_STATUS_FILTER]
+    sql_params = []
 
+    # Company filter (UI > Permissions)
     if filters.get("company"):
         if isinstance(filters["company"], list):
-            so_cond.append("so.company IN %(company)s")
+            so_cond.append(f"so.company IN ({', '.join(['%s'] * len(filters['company']))})")
+            sql_params.extend(filters["company"])
         else:
-            so_cond.append("so.company = %(company)s")
+            so_cond.append("so.company = %s")
+            sql_params.append(filters["company"])
+    elif allowed_companies:
+        if len(allowed_companies) > 1:
+            so_cond.append(f"so.company IN ({', '.join(['%s'] * len(allowed_companies))})")
+            sql_params.extend(allowed_companies)
+        else:
+            so_cond.append("so.company = %s")
+            sql_params.append(allowed_companies[0])
 
+    # Date filters
     if filters.get("from_date") and filters.get("to_date"):
-        so_cond.append("so.transaction_date BETWEEN %(from_date)s AND %(to_date)s")
-    if filters.get("item_code"):
-        so_cond.append("soi.item_code = %(item_code)s")
+        so_cond.append("so.transaction_date BETWEEN %s AND %s")
+        sql_params.extend([filters["from_date"], filters["to_date"]])
 
+    # Item filter
+    if filters.get("item_code"):
+        so_cond.append("soi.item_code = %s")
+        sql_params.append(filters["item_code"])
+
+    # Sales person filter (UI > Permissions)
     if filters.get("sales_person"):
         if isinstance(filters["sales_person"], list):
-            so_cond.append("""
+            so_cond.append(f"""
                 EXISTS (
                     SELECT 1 FROM `tabSales Team` st
                     WHERE st.parent = so.name
-                      AND st.sales_person IN %(sales_person)s
+                      AND st.sales_person IN ({', '.join(['%s'] * len(filters['sales_person']))})
                 )
             """)
+            sql_params.extend(filters["sales_person"])
         else:
             so_cond.append("""
                 EXISTS (
                     SELECT 1 FROM `tabSales Team` st
                     WHERE st.parent = so.name
-                      AND st.sales_person = %(sales_person)s
+                      AND st.sales_person = %s
                 )
             """)
+            sql_params.append(filters["sales_person"])
+    elif allowed_sales_persons:
+        if len(allowed_sales_persons) > 1:
+            so_cond.append(f"""
+                EXISTS (
+                    SELECT 1 FROM `tabSales Team` st
+                    WHERE st.parent = so.name
+                      AND st.sales_person IN ({', '.join(['%s'] * len(allowed_sales_persons))})
+                )
+            """)
+            sql_params.extend(allowed_sales_persons)
+        else:
+            so_cond.append("""
+                EXISTS (
+                    SELECT 1 FROM `tabSales Team` st
+                    WHERE st.parent = so.name
+                      AND st.sales_person = %s
+                )
+            """)
+            sql_params.append(allowed_sales_persons[0])
 
+    # Additional filters
     if filters.get("customer"):
-        so_cond.append("so.customer = %(customer)s")
+        so_cond.append("so.customer = %s")
+        sql_params.append(filters["customer"])
+
     if filters.get("customer_name"):
-        so_cond.append("so.customer_name = %(customer_name)s")
+        so_cond.append("so.customer_name = %s")
+        sql_params.append(filters["customer_name"])
+
     if filters.get("parent_sales_person"):
         so_cond.append("""
             EXISTS (SELECT 1 FROM `tabSales Team` st
                     WHERE st.parent = so.name
-                      AND st.custom_parent_sales_person = %(parent_sales_person)s)
+                      AND st.custom_parent_sales_person = %s)
         """)
+        sql_params.append(filters["parent_sales_person"])
 
     where_so = "WHERE " + " AND ".join(so_cond)
 
@@ -199,29 +235,28 @@ def get_data(filters):
                 soi.purchase_order AS po_number,
                 (SELECT po.transaction_date FROM `tabPurchase Order` po
                   WHERE po.name = soi.purchase_order LIMIT 1) AS po_date
-          FROM `tabSales Order` so
-          JOIN `tabSales Order Item` soi ON soi.parent = so.name
+        FROM `tabSales Order` so
+        JOIN `tabSales Order Item` soi ON soi.parent = so.name
         {where_so}
           AND so.docstatus = 1
-        """, filters, as_dict=True
+        """, tuple(sql_params), as_dict=True
     )
 
     if not sales_orders:
         return []
 
-    # Snapshots
+    # Remaining stock & allocation logic
     item_codes = list({r.item_code for r in sales_orders})
     bin_map    = make_bin_aggregate(item_codes)
     fifo_map   = make_fifo_map(item_codes)
     stock_left = clone_qty_map({it: {co: v["wh_qty"] for co, v in comp.items()} for it, comp in bin_map.items()})
 
-    # PO Aggregates
+    # Purchase Order mapping
     line_po_tot = defaultdict(float)
     line_po_open = defaultdict(float)
     fallback_po_tot = defaultdict(float)
     fallback_po_open = defaultdict(float)
 
-    # PO for SO Item
     so_detail_ids = [r.so_detail for r in sales_orders if r.so_detail]
     if so_detail_ids:
         rows = frappe.db.sql(
@@ -240,7 +275,6 @@ def get_data(filters):
             line_po_tot[r.sales_order_item]  = flt(r.tot)
             line_po_open[r.sales_order_item] = flt(r.open)
 
-    # PO by (SO, Item)
     so_names = [r.sales_order for r in sales_orders]
     if so_names:
         rows = frappe.db.sql(
@@ -265,7 +299,6 @@ def get_data(filters):
         if not row.so_detail:
             so_item_qty_sum[(row.sales_order, row.item_code)] += row.sales_order_qty
 
-    # Build Rows
     data = []
     for so in sales_orders:
         comp, item = so.company, so.item_code
@@ -274,7 +307,6 @@ def get_data(filters):
         total_demand   = bins.get("dem_qty", 0)
         total_ordered  = bins.get("ord_qty", 0)
 
-        # FIFO Allocation
         available = stock_left[item].get(comp, 0)
         alloc = 0
         if available > 0:
@@ -291,9 +323,6 @@ def get_data(filters):
         wh_after_alloc = stock_left[item][comp]
         balance_to_allocate = so.balance_qty - alloc
 
-        # PO Calculations
-        po_num = None
-        po_date = None
         if so.so_detail and so.so_detail in line_po_tot:
             ordered_qty_so  = line_po_tot[so.so_detail]
             ordered_open_so = line_po_open.get(so.so_detail, 0)
@@ -306,23 +335,6 @@ def get_data(filters):
                 ordered_open_so = flt(g_open * share)
             else:
                 ordered_qty_so = ordered_open_so = 0
-
-        if not po_num:
-            hdr = frappe.db.sql(
-                """
-                SELECT po.name, po.transaction_date
-                FROM `tabPurchase Order` po
-                JOIN `tabPurchase Order Item` poi ON poi.parent = po.name
-                WHERE po.docstatus = 1
-                  AND poi.sales_order = %s
-                  AND poi.item_code = %s
-                ORDER BY po.transaction_date, po.creation
-                LIMIT 1
-                """, (so.sales_order, item), as_dict=True
-            )
-            if hdr:
-                po_num = hdr[0].name
-                po_date = hdr[0].transaction_date
 
         balance_to_order_against_so = ordered_qty_so + wh_after_alloc - balance_to_allocate
         total_balance_to_order = total_ordered + wh_qty_company - so.balance_qty
@@ -353,8 +365,8 @@ def get_data(filters):
             "total_ordered_qty": total_ordered,
             "ordered_qty_against_so": ordered_qty_so,
             "ordered_open_qty_against_so": ordered_open_so,
-            "po_date": po_date,
-            "po_number": po_num,
+            "po_date": so.po_date,
+            "po_number": so.po_number,
             "so_ref_number": so.sales_order,
             "balance_to_order_against_so": balance_to_order_against_so,
             "total_balance_to_order": total_balance_to_order,

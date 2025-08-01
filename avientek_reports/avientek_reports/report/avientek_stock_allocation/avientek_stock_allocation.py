@@ -26,86 +26,76 @@ def execute(filters=None):
 # ──────────────────────────────────────────────────────────────
 def get_columns():
     return [
-        # ── identification ──────────────────────────
-        {"label": "Date & Time",        "fieldname": "transaction_date",              "fieldtype": "Datetime", "width": 150},
-        {"label": "Company Name",       "fieldname": "company",                       "fieldtype": "Data",     "width": 130},
-        {"label": "Sales Order No.",    "fieldname": "sales_order",                   "fieldtype": "Link",     "options": "Sales Order", "width": 120},
-        {"label": "Sales Person",       "fieldname": "sales_person",                  "fieldtype": "Data",     "width": 120},
-        {"label": "Country",            "fieldname": "country",                       "fieldtype": "Data",     "width": 100},
-        {"label": "Customer Name",      "fieldname": "customer",                      "fieldtype": "Data",     "width": 150},
-        {"label": "Brand",              "fieldname": "brand",                         "fieldtype": "Data",     "width": 120},
-        {"label": "Part Number",        "fieldname": "part_number",                   "fieldtype": "Data",     "width": 120},
-        {"label": "Item Code",          "fieldname": "item_code",                     "fieldtype": "Link",     "options": "Item", "width": 110},
-        {"label": "Item Name",          "fieldname": "item_name",                     "fieldtype": "Data",     "width": 160},
-        {"label": "Net Rate",          "fieldname": "net_rate",                       "fieldtype": "Currency", "width": 110},
-        {"label": "Net Rate(Company Currency)",     "fieldname": "base_net_rate",     "fieldtype": "Currency", "width": 120},
-        {"label": "Net Amount",        "fieldname": "net_amount",                     "fieldtype": "Currency", "width": 120},
-        {"label": "Net Amount(Company Currency)",   "fieldname": "base_net_amount",    "fieldtype": "Currency", "width": 130},
-
-
-        # ── demand / delivery ───────────────────────
-        {"label": "Total Demanded Qty", "fieldname": "total_demanded_qty",            "fieldtype": "Float",   "width": 120},
-        {"label": "Sales Order Qty",    "fieldname": "sales_order_qty",               "fieldtype": "Float",   "width": 110},
-        {"label": "Delivered Qty",      "fieldname": "delivered_qty",                 "fieldtype": "Float",   "width": 110},
-        {"label": "Balance Qty",        "fieldname": "balance_qty",                   "fieldtype": "Float",   "width": 110},
-
-        # ── warehouse ───────────────────────────────
-        {"label": "Total W/H Qty",              "fieldname": "total_wh_qty",              "fieldtype": "Float",   "width": 120},
-        {"label": "Allocated Qty (FIFO)",       "fieldname": "allocated_qty",             "fieldtype": "Float",   "width": 130},
-        {"label": "Balance to Allocate",        "fieldname": "balance_to_allocate",       "fieldtype": "Float",   "width": 130},
-        {"label": "W/H Qty After Allocation",   "fieldname": "wh_qty_after_alloc",        "fieldtype": "Float",   "width": 150},
-
-        # ── purchasing ─────────────────────────────
-        {"label": "Total Ordered Qty",              "fieldname": "total_ordered_qty",            "fieldtype": "Float", "width": 130},
-        {"label": "Ordered Qty Against SO",         "fieldname": "ordered_qty_against_so",       "fieldtype": "Float", "width": 130},
-        {"label": "Ordered Open Qty Against SO",    "fieldname": "ordered_open_qty_against_so",  "fieldtype": "Float", "width": 150},
-        {"label": "PO Date",                        "fieldname": "po_date",                      "fieldtype": "Date",  "width": 100},
-        {"label": "PO Number",                      "fieldname": "po_number",                    "fieldtype": "Data",  "width": 120},
-
-        # ── balances ───────────────────────────────
-        {"label": "SO Ref Number",                  "fieldname": "so_ref_number",                "fieldtype": "Data",  "width": 120},
-        {"label": "Balance to Order Against SO",    "fieldname": "balance_to_order_against_so",   "fieldtype": "Float","width": 170},
-        {"label": "Total Balance to Order",         "fieldname": "total_balance_to_order",        "fieldtype": "Float","width": 150},
+        {"label": "Date & Time", "fieldname": "transaction_date", "fieldtype": "Datetime", "width": 150},
+        {"label": "Company Name", "fieldname": "company", "fieldtype": "Data", "width": 130},
+        {"label": "Sales Order No.", "fieldname": "sales_order", "fieldtype": "Link", "options": "Sales Order", "width": 120},
+        {"label": "Sales Person", "fieldname": "sales_person", "fieldtype": "Data", "width": 120},
+        {"label": "Country", "fieldname": "country", "fieldtype": "Data", "width": 100},
+        {"label": "Customer Name", "fieldname": "customer", "fieldtype": "Data", "width": 150},
+        {"label": "Brand", "fieldname": "brand", "fieldtype": "Data", "width": 120},
+        {"label": "Part Number", "fieldname": "part_number", "fieldtype": "Data", "width": 120},
+        {"label": "Item Code", "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 110},
+        {"label": "Item Name", "fieldname": "item_name", "fieldtype": "Data", "width": 160},
+        {"label": "Net Rate", "fieldname": "net_rate", "fieldtype": "Currency", "width": 110},
+        {"label": "Net Rate(Company Currency)", "fieldname": "base_net_rate", "fieldtype": "Currency", "width": 120},
+        {"label": "Net Amount", "fieldname": "net_amount", "fieldtype": "Currency", "width": 120},
+        {"label": "Net Amount(Company Currency)", "fieldname": "base_net_amount", "fieldtype": "Currency", "width": 130},
+        {"label": "Total Demanded Qty", "fieldname": "total_demanded_qty", "fieldtype": "Float", "width": 120},
+        {"label": "Sales Order Qty", "fieldname": "sales_order_qty", "fieldtype": "Float", "width": 110},
+        {"label": "Delivered Qty", "fieldname": "delivered_qty", "fieldtype": "Float", "width": 110},
+        {"label": "Balance Qty", "fieldname": "balance_qty", "fieldtype": "Float", "width": 110},
+        {"label": "Total W/H Qty", "fieldname": "total_wh_qty", "fieldtype": "Float", "width": 120},
+        {"label": "Allocated Qty (FIFO)", "fieldname": "allocated_qty", "fieldtype": "Float", "width": 130},
+        {"label": "Balance to Allocate", "fieldname": "balance_to_allocate", "fieldtype": "Float", "width": 130},
+        {"label": "W/H Qty After Allocation", "fieldname": "wh_qty_after_alloc", "fieldtype": "Float", "width": 150},
+        {"label": "Total Ordered Qty", "fieldname": "total_ordered_qty", "fieldtype": "Float", "width": 130},
+        {"label": "Ordered Qty Against SO", "fieldname": "ordered_qty_against_so", "fieldtype": "Float", "width": 130},
+        {"label": "Ordered Open Qty Against SO", "fieldname": "ordered_open_qty_against_so", "fieldtype": "Float", "width": 150},
+        {"label": "PO Date", "fieldname": "po_date", "fieldtype": "Date", "width": 100},
+        {"label": "PO Number", "fieldname": "po_number", "fieldtype": "Data", "width": 120},
+        {"label": "SO Ref Number", "fieldname": "so_ref_number", "fieldtype": "Data", "width": 120},
+        {"label": "Balance to Order Against SO", "fieldname": "balance_to_order_against_so", "fieldtype": "Float", "width": 170},
+        {"label": "Total Balance to Order", "fieldname": "total_balance_to_order", "fieldtype": "Float", "width": 150},
     ]
 
 # ──────────────────────────────────────────────────────────────
-# STOCK / BIN HELPERS (unchanged)
+# STOCK / BIN HELPERS
 # ──────────────────────────────────────────────────────────────
 def make_bin_aggregate(item_codes):
     rows = frappe.db.sql(
         f"""
         SELECT B.item_code, W.company,
-               SUM(B.actual_qty)   AS wh_qty,
+               SUM(B.actual_qty) AS wh_qty,
                SUM(B.reserved_qty) AS dem_qty,
-               SUM(B.ordered_qty)  AS ord_qty
-          FROM `tabBin` B
-          JOIN `tabWarehouse` W ON W.name = B.warehouse
-         WHERE B.item_code IN ({", ".join(["%s"]*len(item_codes))})
-           {EXCLUDE_WH}
-         GROUP BY B.item_code, W.company
-        """, tuple(item_codes), as_dict=True
+               SUM(B.ordered_qty) AS ord_qty
+        FROM `tabBin` B
+        JOIN `tabWarehouse` W ON W.name = B.warehouse
+        WHERE B.item_code IN ({", ".join(["%s"] * len(item_codes))})
+        {EXCLUDE_WH}
+        GROUP BY B.item_code, W.company
+        """,
+        tuple(item_codes),
+        as_dict=True,
     )
     out = defaultdict(dict)
     for r in rows:
-        out[r.item_code][r.company] = {
-            "wh_qty":  flt(r.wh_qty),
-            "dem_qty": flt(r.dem_qty),
-            "ord_qty": flt(r.ord_qty),
-        }
+        out[r.item_code][r.company] = {"wh_qty": flt(r.wh_qty), "dem_qty": flt(r.dem_qty), "ord_qty": flt(r.ord_qty)}
     return out
 
 def make_fifo_map(item_codes):
     rows = frappe.db.sql(
         f"""
-        SELECT  SLE.item_code, W.company,
-                SLE.actual_qty, SLE.posting_date
-          FROM `tabStock Ledger Entry` SLE
-          JOIN `tabWarehouse` W ON W.name = SLE.warehouse
-         WHERE SLE.item_code IN ({", ".join(["%s"]*len(item_codes))})
-           AND SLE.actual_qty > 0
-           {EXCLUDE_WH}
-         ORDER BY W.company, SLE.item_code, SLE.posting_date
-        """, tuple(item_codes), as_dict=True
+        SELECT SLE.item_code, W.company,
+               SLE.actual_qty, SLE.posting_date
+        FROM `tabStock Ledger Entry` SLE
+        JOIN `tabWarehouse` W ON W.name = SLE.warehouse
+        WHERE SLE.item_code IN ({", ".join(["%s"] * len(item_codes))})
+        AND SLE.actual_qty > 0
+        {EXCLUDE_WH}
+        ORDER BY W.company, SLE.item_code, SLE.posting_date
+        """,
+        tuple(item_codes),
+        as_dict=True,
     )
     fifo = defaultdict(lambda: defaultdict(list))
     for r in rows:
@@ -122,29 +112,40 @@ def clone_qty_map(src):
 # ──────────────────────────────────────────────────────────────
 # MAIN DATA
 # ──────────────────────────────────────────────────────────────
+def get_user_permission_values(user, doctype):
+    """Fetch user permission values for a specific doctype."""
+    return frappe.db.get_all(
+        "User Permission",
+        filters={"user": user, "allow": doctype},
+        pluck="for_value"
+    )
+
 def get_data(filters):
-    if not filters.get("sales_person"):
-        allowed_sales_persons = frappe.get_all(
-            "Sales Person",
-            filters={},  # You can add additional filters here
-            pluck="name",
-            ignore_permissions=False  # Only fetch what the user has access to
-        )
+    # Get user permissions
+    allowed_companies = get_user_permission_values(frappe.session.user, "Company")
+    allowed_sales_persons = get_user_permission_values(frappe.session.user, "Sales Person")
 
-        if len(allowed_sales_persons) == 1:
-            filters["sales_person"] = allowed_sales_persons[0]
-        elif len(allowed_sales_persons) > 1:
-            filters["sales_person"] = allowed_sales_persons  # list for IN clause
+    # Apply filters based on permissions
+    if allowed_companies:
+        filters["company"] = allowed_companies if len(allowed_companies) > 1 else allowed_companies[0]
 
+    if allowed_sales_persons:
+        filters["sales_person"] = allowed_sales_persons if len(allowed_sales_persons) > 1 else allowed_sales_persons[0]
 
-    # ---- Sales-Order items (capture soi.name for linking) --------------
+    # ---- Sales-Order items
     so_cond = [SO_STATUS_FILTER]
+
     if filters.get("company"):
-        so_cond.append("so.company = %(company)s")
+        if isinstance(filters["company"], list):
+            so_cond.append("so.company IN %(company)s")
+        else:
+            so_cond.append("so.company = %(company)s")
+
     if filters.get("from_date") and filters.get("to_date"):
         so_cond.append("so.transaction_date BETWEEN %(from_date)s AND %(to_date)s")
     if filters.get("item_code"):
         so_cond.append("soi.item_code = %(item_code)s")
+
     if filters.get("sales_person"):
         if isinstance(filters["sales_person"], list):
             so_cond.append("""
@@ -162,21 +163,21 @@ def get_data(filters):
                       AND st.sales_person = %(sales_person)s
                 )
             """)
+
     if filters.get("customer"):
         so_cond.append("so.customer = %(customer)s")
-
     if filters.get("customer_name"):
         so_cond.append("so.customer_name = %(customer_name)s")
-
     if filters.get("parent_sales_person"):
         so_cond.append("""
-            EXISTS ( SELECT 1 FROM `tabSales Team` st
+            EXISTS (SELECT 1 FROM `tabSales Team` st
                     WHERE st.parent = so.name
-                        AND st.custom_parent_sales_person = %(parent_sales_person)s )
+                      AND st.custom_parent_sales_person = %(parent_sales_person)s)
         """)
+
     where_so = "WHERE " + " AND ".join(so_cond)
-    
-    
+
+    # Fetch Sales Orders
     sales_orders = frappe.db.sql(
         f"""
         SELECT  so.transaction_date, so.company,
@@ -186,18 +187,17 @@ def get_data(filters):
                 so.customer_name,
                 (SELECT addr.country FROM `tabAddress` addr
                   WHERE addr.name = so.customer_address LIMIT 1) AS country,
-                soi.name AS so_detail,                       -- link-id
+                soi.name AS so_detail,
                 soi.item_code, soi.part_number,
-                (SELECT item_name FROM `tabItem`
-                  WHERE name = soi.item_code) AS item_name,
+                (SELECT item_name FROM `tabItem` WHERE name = soi.item_code) AS item_name,
                 soi.brand,
-                soi.qty                       AS sales_order_qty,
+                soi.qty AS sales_order_qty,
                 soi.delivered_qty,
                 (soi.qty - soi.delivered_qty) AS balance_qty,
-                soi.net_rate,soi.base_net_rate,
-                soi.net_amount,soi.base_net_amount,
-                soi.purchase_order            AS po_number,
-                (SELECT po.transaction_date   FROM `tabPurchase Order` po
+                soi.net_rate, soi.base_net_rate,
+                soi.net_amount, soi.base_net_amount,
+                soi.purchase_order AS po_number,
+                (SELECT po.transaction_date FROM `tabPurchase Order` po
                   WHERE po.name = soi.purchase_order LIMIT 1) AS po_date
           FROM `tabSales Order` so
           JOIN `tabSales Order Item` soi ON soi.parent = so.name
@@ -205,54 +205,54 @@ def get_data(filters):
           AND so.docstatus = 1
         """, filters, as_dict=True
     )
+
     if not sales_orders:
         return []
 
-    # ---- snapshots ----------------------------------------------------
+    # Snapshots
     item_codes = list({r.item_code for r in sales_orders})
     bin_map    = make_bin_aggregate(item_codes)
     fifo_map   = make_fifo_map(item_codes)
-    stock_left = clone_qty_map({it: {co: v["wh_qty"] for co, v in comp.items()}
-                                for it, comp in bin_map.items()})
+    stock_left = clone_qty_map({it: {co: v["wh_qty"] for co, v in comp.items()} for it, comp in bin_map.items()})
 
-    # 1) Initialize PO related aggregates
+    # PO Aggregates
     line_po_tot = defaultdict(float)
     line_po_open = defaultdict(float)
     fallback_po_tot = defaultdict(float)
     fallback_po_open = defaultdict(float)
 
-    # Calculate PO totals for Sales Order Item
+    # PO for SO Item
     so_detail_ids = [r.so_detail for r in sales_orders if r.so_detail]
     if so_detail_ids:
         rows = frappe.db.sql(
             f"""
             SELECT sales_order_item,
-                   SUM(qty)                      AS tot,
-                   SUM(qty - received_qty)       AS open
-              FROM `tabPurchase Order Item` poi
-              JOIN `tabPurchase Order` po ON po.name = poi.parent
-             WHERE poi.sales_order_item IN ({", ".join(["%s"]*len(so_detail_ids))})
-               AND po.docstatus = 1
-             GROUP BY sales_order_item
+                   SUM(qty) AS tot,
+                   SUM(qty - received_qty) AS open
+            FROM `tabPurchase Order Item` poi
+            JOIN `tabPurchase Order` po ON po.name = poi.parent
+            WHERE poi.sales_order_item IN ({", ".join(["%s"] * len(so_detail_ids))})
+              AND po.docstatus = 1
+            GROUP BY sales_order_item
             """, tuple(so_detail_ids), as_dict=True
         )
         for r in rows:
             line_po_tot[r.sales_order_item]  = flt(r.tot)
             line_po_open[r.sales_order_item] = flt(r.open)
 
-    # 2) Grouped by (SO, item_code)
+    # PO by (SO, Item)
     so_names = [r.sales_order for r in sales_orders]
     if so_names:
         rows = frappe.db.sql(
             f"""
             SELECT poi.sales_order, poi.item_code,
-                   SUM(poi.qty)                    AS tot,
+                   SUM(poi.qty) AS tot,
                    SUM(poi.qty - poi.received_qty) AS open
-              FROM `tabPurchase Order Item` poi
-              JOIN `tabPurchase Order` po ON po.name = poi.parent
-             WHERE poi.sales_order IN ({", ".join(["%s"]*len(so_names))})
-               AND po.docstatus = 1
-             GROUP BY poi.sales_order, poi.item_code
+            FROM `tabPurchase Order Item` poi
+            JOIN `tabPurchase Order` po ON po.name = poi.parent
+            WHERE poi.sales_order IN ({", ".join(["%s"] * len(so_names))})
+              AND po.docstatus = 1
+            GROUP BY poi.sales_order, poi.item_code
             """, tuple(so_names), as_dict=True
         )
         for r in rows:
@@ -260,17 +260,13 @@ def get_data(filters):
             fallback_po_tot[key]  += flt(r.tot)
             fallback_po_open[key] += flt(r.open)
 
-    # total SO-qty per (SO,item) for proportional split
     so_item_qty_sum = defaultdict(float)
     for row in sales_orders:
         if not row.so_detail:
             so_item_qty_sum[(row.sales_order, row.item_code)] += row.sales_order_qty
 
-    # ------------------------------------------------------------------
-    # BUILD REPORT ROWS
-    # ------------------------------------------------------------------
+    # Build Rows
     data = []
-
     for so in sales_orders:
         comp, item = so.company, so.item_code
         bins = bin_map.get(item, {}).get(comp, {})
@@ -278,7 +274,7 @@ def get_data(filters):
         total_demand   = bins.get("dem_qty", 0)
         total_ordered  = bins.get("ord_qty", 0)
 
-        # FIFO allocation (capped)
+        # FIFO Allocation
         available = stock_left[item].get(comp, 0)
         alloc = 0
         if available > 0:
@@ -295,84 +291,73 @@ def get_data(filters):
         wh_after_alloc = stock_left[item][comp]
         balance_to_allocate = so.balance_qty - alloc
 
-        # line-level PO figures
-        po_num = None  # Initialize po_num here
-        po_date = None  # Initialize po_date here
+        # PO Calculations
+        po_num = None
+        po_date = None
         if so.so_detail and so.so_detail in line_po_tot:
             ordered_qty_so  = line_po_tot[so.so_detail]
-            ordered_open_so = line_po_tot[so.so_detail] - line_po_open.get(so.so_detail, 0)  # Correct calculation for open qty
+            ordered_open_so = line_po_open.get(so.so_detail, 0)
         else:
             key = (so.sales_order, item)
             g_tot, g_open = fallback_po_tot.get(key, 0), fallback_po_open.get(key, 0)
             if g_tot:
-                # Calculate proportional share of total ordered qty and open qty, checking for zero division
-                if so_item_qty_sum[key] != 0:
-                    share = so.sales_order_qty / so_item_qty_sum[key]
-                else:
-                    share = 0  # Default to 0 or handle accordingly
+                share = so.sales_order_qty / so_item_qty_sum[key] if so_item_qty_sum[key] else 0
                 ordered_qty_so = flt(g_tot * share)
                 ordered_open_so = flt(g_open * share)
             else:
                 ordered_qty_so = ordered_open_so = 0
 
-        # Fetch PO number and PO date based on Sales Order reference
         if not po_num:
             hdr = frappe.db.sql(
                 """
                 SELECT po.name, po.transaction_date
-                  FROM `tabPurchase Order` po
-                  JOIN `tabPurchase Order Item` poi ON poi.parent = po.name
-                 WHERE po.docstatus = 1
-                   AND poi.sales_order = %s
-                   AND poi.item_code = %s
-                 ORDER BY po.transaction_date, po.creation
-                 LIMIT 1
+                FROM `tabPurchase Order` po
+                JOIN `tabPurchase Order Item` poi ON poi.parent = po.name
+                WHERE po.docstatus = 1
+                  AND poi.sales_order = %s
+                  AND poi.item_code = %s
+                ORDER BY po.transaction_date, po.creation
+                LIMIT 1
                 """, (so.sales_order, item), as_dict=True
             )
             if hdr:
-                po_num = hdr[0].name  # Correctly set PO number
-                po_date = hdr[0].transaction_date  # Set PO date if PO number exists
+                po_num = hdr[0].name
+                po_date = hdr[0].transaction_date
 
-        # balances
         balance_to_order_against_so = ordered_qty_so + wh_after_alloc - balance_to_allocate
         total_balance_to_order = total_ordered + wh_qty_company - so.balance_qty
 
-        # row
         data.append({
             "transaction_date": so.transaction_date,
-            "company":          comp,
-            "sales_order":      so.sales_order,
-            "sales_person":     so.sales_person,
-            "customer":         so.customer_name,
-            "country":          so.country,
-            "brand":            so.brand,
-            "part_number":      so.part_number,
-            "item_code":        item,
-            "item_name":        so.item_name,
-            "net_rate":         so.net_rate,
-            "base_net_rate":    so.base_net_rate,
-            "net_amount":       so.net_amount,
-            "base_net_amount":  so.base_net_amount,
-
+            "company": comp,
+            "sales_order": so.sales_order,
+            "sales_person": so.sales_person,
+            "customer": so.customer_name,
+            "country": so.country,
+            "brand": so.brand,
+            "part_number": so.part_number,
+            "item_code": item,
+            "item_name": so.item_name,
+            "net_rate": so.net_rate,
+            "base_net_rate": so.base_net_rate,
+            "net_amount": so.net_amount,
+            "base_net_amount": so.base_net_amount,
             "total_demanded_qty": total_demand,
-            "sales_order_qty":    so.sales_order_qty,
-            "delivered_qty":      so.delivered_qty,
-            "balance_qty":        so.balance_qty,
-
-            "total_wh_qty":        wh_qty_company,
-            "allocated_qty":       alloc,
+            "sales_order_qty": so.sales_order_qty,
+            "delivered_qty": so.delivered_qty,
+            "balance_qty": so.balance_qty,
+            "total_wh_qty": wh_qty_company,
+            "allocated_qty": alloc,
             "balance_to_allocate": balance_to_allocate,
-            "wh_qty_after_alloc":  wh_after_alloc,
-
-            "total_ordered_qty":           total_ordered,
-            "ordered_qty_against_so":      ordered_qty_so,
+            "wh_qty_after_alloc": wh_after_alloc,
+            "total_ordered_qty": total_ordered,
+            "ordered_qty_against_so": ordered_qty_so,
             "ordered_open_qty_against_so": ordered_open_so,
-            "po_date":                     po_date,  # PO date fetched only if PO number exists
-            "po_number":                   po_num,  # Correctly fetched PO number
-
-            "so_ref_number":               so.sales_order,
+            "po_date": po_date,
+            "po_number": po_num,
+            "so_ref_number": so.sales_order,
             "balance_to_order_against_so": balance_to_order_against_so,
-            "total_balance_to_order":      total_balance_to_order,
+            "total_balance_to_order": total_balance_to_order,
         })
 
     return data

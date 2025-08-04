@@ -29,7 +29,7 @@ frappe.query_reports["Avientek Stock Allocation"] = {
             fieldname: "sales_person",
             label: __("Sales Person"),
             fieldtype: "Link",
-            options: "Sales Person"            
+            options: "Sales Person"
         },
         {
             fieldname: "customer",
@@ -48,5 +48,7 @@ frappe.query_reports["Avientek Stock Allocation"] = {
             fieldtype: "Link",
             options: "Sales Person"
         }
-    ]
+    ],
+
+
 };

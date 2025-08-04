@@ -78,7 +78,6 @@ app_license = "mit"
 # 	"methods": "avientek_reports.utils.jinja_methods",
 # 	"filters": "avientek_reports.utils.jinja_filters"
 # }
-
 # Installation
 # ------------
 
@@ -144,6 +143,12 @@ app_license = "mit"
 # 		"on_trash": "method"
 # 	}
 # }
+doc_events = {
+    "User Permission": {
+        "after_insert": "avientek_reports.utils.rebuild_stock_allocation",
+        "on_update":    "avientek_reports.utils.rebuild_stock_allocation",
+    }
+}
 
 # Scheduled Tasks
 # ---------------

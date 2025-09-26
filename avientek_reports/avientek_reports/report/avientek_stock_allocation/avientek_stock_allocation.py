@@ -36,10 +36,10 @@ def get_columns():
         {"label": "Part Number", "fieldname": "part_number", "fieldtype": "Data", "width": 120},
         {"label": "Item Code", "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 110},
         {"label": "Item Name", "fieldname": "item_name", "fieldtype": "Data", "width": 160},
-        {"label": "Net Rate", "fieldname": "net_rate", "fieldtype": "Currency", "width": 110},
-        {"label": "Net Rate(Company Currency)", "fieldname": "base_net_rate", "fieldtype": "Currency", "width": 120},
-        {"label": "Net Amount", "fieldname": "net_amount", "fieldtype": "Currency", "width": 120},
-        {"label": "Net Amount(Company Currency)", "fieldname": "base_net_amount", "fieldtype": "Currency", "width": 130},
+        {"label": "Net Rate", "fieldname": "net_rate", "fieldtype": "Currency", "width": 110},
+        {"label": "Net Rate(Company Currency)", "fieldname": "base_net_rate", "fieldtype": "Currency", "width": 120},
+        {"label": "Net Amount", "fieldname": "net_amount", "fieldtype": "Currency", "width": 120},
+        {"label": "Net Amount(Company Currency)", "fieldname": "base_net_amount", "fieldtype": "Currency", "width": 130},
         {"label": "Total Demanded Qty", "fieldname": "total_demanded_qty", "fieldtype": "Float", "width": 120},
         {"label": "Sales Order Qty", "fieldname": "sales_order_qty", "fieldtype": "Float", "width": 110},
         {"label": "Delivered Qty", "fieldname": "delivered_qty", "fieldtype": "Float", "width": 110},
@@ -61,7 +61,14 @@ def get_columns():
 # ──────────────────────────────────────────────────────────────
 # HELPER FUNCTIONS
 # ──────────────────────────────────────────────────────────────
-def make_bin_aggregate(item_codes):
+def make_bin_aggregate(item_codes, companies):
+    wh_cond = f"WHERE B.item_code IN ({', '.join(['%s'] * len(item_codes))}) {EXCLUDE_WH}"
+    wh_params = list(item_codes)
+    
+    if companies:
+        wh_cond += f" AND W.company IN ({', '.join(['%s'] * len(companies))})"
+        wh_params.extend(companies)
+        
     rows = frappe.db.sql(
         f"""
         SELECT B.item_code, W.company,
@@ -70,11 +77,10 @@ def make_bin_aggregate(item_codes):
                SUM(B.ordered_qty) AS ord_qty
         FROM `tabBin` B
         JOIN `tabWarehouse` W ON W.name = B.warehouse
-        WHERE B.item_code IN ({", ".join(["%s"] * len(item_codes))})
-        {EXCLUDE_WH}
+        {wh_cond}
         GROUP BY B.item_code, W.company
         """,
-        tuple(item_codes),
+        tuple(wh_params),
         as_dict=True,
     )
     out = defaultdict(dict)
@@ -82,19 +88,24 @@ def make_bin_aggregate(item_codes):
         out[r.item_code][r.company] = {"wh_qty": flt(r.wh_qty), "dem_qty": flt(r.dem_qty), "ord_qty": flt(r.ord_qty)}
     return out
 
-def make_fifo_map(item_codes):
+def make_fifo_map(item_codes, companies):
+    wh_cond = f"WHERE SLE.item_code IN ({', '.join(['%s'] * len(item_codes))}) AND SLE.actual_qty > 0 {EXCLUDE_WH}"
+    wh_params = list(item_codes)
+
+    if companies:
+        wh_cond += f" AND W.company IN ({', '.join(['%s'] * len(companies))})"
+        wh_params.extend(companies)
+    
     rows = frappe.db.sql(
         f"""
         SELECT SLE.item_code, W.company,
                SLE.actual_qty, SLE.posting_date
         FROM `tabStock Ledger Entry` SLE
         JOIN `tabWarehouse` W ON W.name = SLE.warehouse
-        WHERE SLE.item_code IN ({", ".join(["%s"] * len(item_codes))})
-        AND SLE.actual_qty > 0
-        {EXCLUDE_WH}
+        {wh_cond}
         ORDER BY W.company, SLE.item_code, SLE.posting_date
         """,
-        tuple(item_codes),
+        tuple(wh_params),
         as_dict=True,
     )
     fifo = defaultdict(lambda: defaultdict(list))
@@ -129,20 +140,18 @@ def get_data(filters):
     sql_params = []
 
     # Company filter (UI > Permissions)
-    if filters.get("company"):
-        if isinstance(filters["company"], list):
-            so_cond.append(f"so.company IN ({', '.join(['%s'] * len(filters['company']))})")
-            sql_params.extend(filters["company"])
-        else:
-            so_cond.append("so.company = %s")
-            sql_params.append(filters["company"])
+    companies = filters.get("company")
+    if companies:
+        if not isinstance(companies, list):
+            companies = [companies]
+        so_cond.append(f"so.company IN ({', '.join(['%s'] * len(companies))})")
+        sql_params.extend(companies)
     elif allowed_companies:
-        if len(allowed_companies) > 1:
-            so_cond.append(f"so.company IN ({', '.join(['%s'] * len(allowed_companies))})")
-            sql_params.extend(allowed_companies)
-        else:
-            so_cond.append("so.company = %s")
-            sql_params.append(allowed_companies[0])
+        companies = allowed_companies
+        so_cond.append(f"so.company IN ({', '.join(['%s'] * len(companies))})")
+        sql_params.extend(companies)
+    else:
+        companies = []
 
     # Date filters
     if filters.get("from_date") and filters.get("to_date"):
@@ -155,44 +164,28 @@ def get_data(filters):
         sql_params.append(filters["item_code"])
 
     # Sales person filter (UI > Permissions)
-    if filters.get("sales_person"):
-        if isinstance(filters["sales_person"], list):
-            so_cond.append(f"""
-                EXISTS (
-                    SELECT 1 FROM `tabSales Team` st
-                    WHERE st.parent = so.name
-                      AND st.sales_person IN ({', '.join(['%s'] * len(filters['sales_person']))})
-                )
-            """)
-            sql_params.extend(filters["sales_person"])
-        else:
-            so_cond.append("""
-                EXISTS (
-                    SELECT 1 FROM `tabSales Team` st
-                    WHERE st.parent = so.name
-                      AND st.sales_person = %s
-                )
-            """)
-            sql_params.append(filters["sales_person"])
+    sales_persons = filters.get("sales_person")
+    if sales_persons:
+        if not isinstance(sales_persons, list):
+            sales_persons = [sales_persons]
+        so_cond.append(f"""
+            EXISTS (
+                SELECT 1 FROM `tabSales Team` st
+                WHERE st.parent = so.name
+                  AND st.sales_person IN ({', '.join(['%s'] * len(sales_persons))})
+            )
+        """)
+        sql_params.extend(sales_persons)
     elif allowed_sales_persons:
-        if len(allowed_sales_persons) > 1:
-            so_cond.append(f"""
-                EXISTS (
-                    SELECT 1 FROM `tabSales Team` st
-                    WHERE st.parent = so.name
-                      AND st.sales_person IN ({', '.join(['%s'] * len(allowed_sales_persons))})
-                )
-            """)
-            sql_params.extend(allowed_sales_persons)
-        else:
-            so_cond.append("""
-                EXISTS (
-                    SELECT 1 FROM `tabSales Team` st
-                    WHERE st.parent = so.name
-                      AND st.sales_person = %s
-                )
-            """)
-            sql_params.append(allowed_sales_persons[0])
+        sales_persons = allowed_sales_persons
+        so_cond.append(f"""
+            EXISTS (
+                SELECT 1 FROM `tabSales Team` st
+                WHERE st.parent = so.name
+                  AND st.sales_person IN ({', '.join(['%s'] * len(sales_persons))})
+            )
+        """)
+        sql_params.extend(sales_persons)
 
     # Additional filters
     if filters.get("customer"):
@@ -219,10 +212,10 @@ def get_data(filters):
         SELECT  so.transaction_date, so.company,
                 so.name  AS sales_order,
                 (SELECT st.sales_person FROM `tabSales Team` st
-                  WHERE st.parent = so.name LIMIT 1) AS sales_person,
+                 WHERE st.parent = so.name LIMIT 1) AS sales_person,
                 so.customer_name,
                 (SELECT addr.country FROM `tabAddress` addr
-                  WHERE addr.name = so.customer_address LIMIT 1) AS country,
+                 WHERE addr.name = so.customer_address LIMIT 1) AS country,
                 soi.name AS so_detail,
                 soi.item_code, soi.part_number,
                 (SELECT item_name FROM `tabItem` WHERE name = soi.item_code) AS item_name,
@@ -234,21 +227,29 @@ def get_data(filters):
                 soi.net_amount, soi.base_net_amount,
                 soi.purchase_order AS po_number,
                 (SELECT po.transaction_date FROM `tabPurchase Order` po
-                  WHERE po.name = soi.purchase_order LIMIT 1) AS po_date
+                 WHERE po.name = soi.purchase_order LIMIT 1) AS po_date
         FROM `tabSales Order` so
         JOIN `tabSales Order Item` soi ON soi.parent = so.name
         {where_so}
           AND so.docstatus = 1
+        ORDER BY so.transaction_date ASC
         """, tuple(sql_params), as_dict=True
     )
 
     if not sales_orders:
         return []
 
-    # Remaining stock & allocation logic
+    # New Logic: Calculate FIFO map and bin aggregates based on the *filtered* sales orders
     item_codes = list({r.item_code for r in sales_orders})
-    bin_map    = make_bin_aggregate(item_codes)
-    fifo_map   = make_fifo_map(item_codes)
+    so_companies = list({r.company for r in sales_orders})
+    
+    bin_map = make_bin_aggregate(item_codes, so_companies)
+    fifo_map = make_fifo_map(item_codes, so_companies)
+    
+    # Sort sales orders by date to ensure proper FIFO allocation
+    sales_orders.sort(key=lambda x: x.transaction_date)
+    
+    # Remaining stock & allocation logic
     stock_left = clone_qty_map({it: {co: v["wh_qty"] for co, v in comp.items()} for it, comp in bin_map.items()})
 
     # Purchase Order mapping
@@ -272,7 +273,7 @@ def get_data(filters):
             """, tuple(so_detail_ids), as_dict=True
         )
         for r in rows:
-            line_po_tot[r.sales_order_item]  = flt(r.tot)
+            line_po_tot[r.sales_order_item] = flt(r.tot)
             line_po_open[r.sales_order_item] = flt(r.open)
 
     so_names = [r.sales_order for r in sales_orders]
@@ -291,7 +292,7 @@ def get_data(filters):
         )
         for r in rows:
             key = (r.sales_order, r.item_code)
-            fallback_po_tot[key]  += flt(r.tot)
+            fallback_po_tot[key] += flt(r.tot)
             fallback_po_open[key] += flt(r.open)
 
     so_item_qty_sum = defaultdict(float)
@@ -304,8 +305,8 @@ def get_data(filters):
         comp, item = so.company, so.item_code
         bins = bin_map.get(item, {}).get(comp, {})
         wh_qty_company = bins.get("wh_qty", 0)
-        total_demand   = bins.get("dem_qty", 0)
-        total_ordered  = bins.get("ord_qty", 0)
+        total_demand = bins.get("dem_qty", 0)
+        total_ordered = bins.get("ord_qty", 0)
 
         available = stock_left[item].get(comp, 0)
         alloc = 0
@@ -316,7 +317,7 @@ def get_data(filters):
                     break
                 take = min(lot["qty"], need, available - alloc)
                 alloc += take
-                need  -= take
+                need -= take
                 lot["qty"] -= take
 
         stock_left[item][comp] = max(available - alloc, 0)
@@ -324,7 +325,7 @@ def get_data(filters):
         balance_to_allocate = so.balance_qty - alloc
 
         if so.so_detail and so.so_detail in line_po_tot:
-            ordered_qty_so  = line_po_tot[so.so_detail]
+            ordered_qty_so = line_po_tot[so.so_detail]
             ordered_open_so = line_po_open.get(so.so_detail, 0)
         else:
             key = (so.sales_order, item)
@@ -372,5 +373,4 @@ def get_data(filters):
             "total_balance_to_order": total_balance_to_order,
         })
 
-    return data  
-
+    return data

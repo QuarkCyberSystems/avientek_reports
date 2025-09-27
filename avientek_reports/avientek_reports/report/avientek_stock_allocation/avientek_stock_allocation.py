@@ -163,50 +163,9 @@ def get_data(filters):
         so_cond.append("soi.item_code = %s")
         sql_params.append(filters["item_code"])
 
-    # Sales person filter (UI > Permissions)
-    sales_persons = filters.get("sales_person")
-    if sales_persons:
-        if not isinstance(sales_persons, list):
-            sales_persons = [sales_persons]
-        so_cond.append(f"""
-            EXISTS (
-                SELECT 1 FROM `tabSales Team` st
-                WHERE st.parent = so.name
-                  AND st.sales_person IN ({', '.join(['%s'] * len(sales_persons))})
-            )
-        """)
-        sql_params.extend(sales_persons)
-    elif allowed_sales_persons:
-        sales_persons = allowed_sales_persons
-        so_cond.append(f"""
-            EXISTS (
-                SELECT 1 FROM `tabSales Team` st
-                WHERE st.parent = so.name
-                  AND st.sales_person IN ({', '.join(['%s'] * len(sales_persons))})
-            )
-        """)
-        sql_params.extend(sales_persons)
-
-    # Additional filters
-    if filters.get("customer"):
-        so_cond.append("so.customer = %s")
-        sql_params.append(filters["customer"])
-
-    if filters.get("customer_name"):
-        so_cond.append("so.customer_name = %s")
-        sql_params.append(filters["customer_name"])
-
-    if filters.get("parent_sales_person"):
-        so_cond.append("""
-            EXISTS (SELECT 1 FROM `tabSales Team` st
-                    WHERE st.parent = so.name
-                      AND st.custom_parent_sales_person = %s)
-        """)
-        sql_params.append(filters["parent_sales_person"])
-
     where_so = "WHERE " + " AND ".join(so_cond)
 
-    # Fetch Sales Orders
+    # Fetch ALL relevant Sales Orders (only company/date/item restrictions)
     sales_orders = frappe.db.sql(
         f"""
         SELECT  so.transaction_date, so.company,
@@ -239,17 +198,14 @@ def get_data(filters):
     if not sales_orders:
         return []
 
-    # New Logic: Calculate FIFO map and bin aggregates based on the *filtered* sales orders
+    # Allocation logic (full dataset)
     item_codes = list({r.item_code for r in sales_orders})
     so_companies = list({r.company for r in sales_orders})
     
     bin_map = make_bin_aggregate(item_codes, so_companies)
     fifo_map = make_fifo_map(item_codes, so_companies)
     
-    # Sort sales orders by date to ensure proper FIFO allocation
     sales_orders.sort(key=lambda x: x.transaction_date)
-    
-    # Remaining stock & allocation logic
     stock_left = clone_qty_map({it: {co: v["wh_qty"] for co, v in comp.items()} for it, comp in bin_map.items()})
 
     # Purchase Order mapping
@@ -372,5 +328,23 @@ def get_data(filters):
             "balance_to_order_against_so": balance_to_order_against_so,
             "total_balance_to_order": total_balance_to_order,
         })
+
+    # ─── Apply filters AFTER allocation ───
+    if filters.get("customer"):
+        data = [d for d in data if d["customer"] == filters["customer"]]
+
+    if filters.get("customer_name"):
+        data = [d for d in data if d["customer"] == filters["customer_name"]]
+
+    if filters.get("sales_person"):
+        sales_persons = filters.get("sales_person")
+        if not isinstance(sales_persons, list):
+            sales_persons = [sales_persons]
+        data = [d for d in data if d["sales_person"] in sales_persons]
+    elif allowed_sales_persons:
+        data = [d for d in data if d["sales_person"] in allowed_sales_persons]
+
+    if filters.get("parent_sales_person"):
+        data = [d for d in data if d.get("parent_sales_person") == filters["parent_sales_person"]]
 
     return data

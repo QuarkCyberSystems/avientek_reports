@@ -275,7 +275,7 @@ def _build_rows(item_map, bin_sum, lc_rate, companies):
     def money(qty: float, unit_rate: float, company: str) -> float:
         """
         Convert `qty × unit_rate` from the company’s base currency to USD
-        using hard‑wired factors:
+        using hard-wired factors:
           • AED companies      → 3.6725
           • IN Avientek        → 87
         """
@@ -297,7 +297,7 @@ def _build_rows(item_map, bin_sum, lc_rate, companies):
         }
 
         tot            = defaultdict(float)
-        total_qty      = 0.0   # for overall avg unit price
+        total_qty      = 0.0   # for overall avg unit price
         total_stockval = 0.0
 
         for co in companies:
@@ -311,13 +311,13 @@ def _build_rows(item_map, bin_sum, lc_rate, companies):
             valqty = flt(agg["val_qty"])
             valval = flt(agg["val_val"])
 
-            demand    = res + ind
-            free      = act - res
-            net_free  = free + ord_ - demand
-            lc_aed    = lc_rate[it][co]
-            unit_aed  = valval / valqty if valqty else 0.0
+            demand   = res + ind
+            free     = act - res   # keep existing logic for Free Qty column
+            net_free = (act + ord_) - demand   # UPDATED FORMULA ✅
+            lc_aed   = lc_rate[it][co]
+            unit_aed = valval / valqty if valqty else 0.0
 
-            # Company‑specific conversions
+            # Company-specific conversions
             row[f"{sk}_unit_price"]   = money(act, unit_aed, co) if valqty else 0.0
             row[f"{sk}_wh_stock_qty"] = act
             row[f"{sk}_wh_stock_val"] = money(act, unit_aed, co) if valqty else 0.0

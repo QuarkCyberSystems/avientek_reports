@@ -67,7 +67,7 @@ def get_data(filters):
             sle.batch_no,
             batch.manufacturing_date,
             item.brand,
-            item.custom_part_number AS part_number,
+            item.part_number AS part_number,
 
             -- Opening Qty (no negative)
             GREATEST(

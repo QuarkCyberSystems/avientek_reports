@@ -47,6 +47,24 @@ frappe.query_reports["Avientek Stock Allocation"] = {
             label: __("Parent Sales Person"),
             fieldtype: "Link",
             options: "Sales Person"
+        },
+        {
+            fieldname: "item_group",
+            label: __("Item Group"),
+            fieldtype: "Link",
+            options: "Item Group"
+        },
+        {
+            fieldname: "brand",
+            label: __("Brand"),
+            fieldtype: "Link",
+            options: "Brand"
+        },
+        {
+            fieldname: "territory",
+            label: __("Territory"),
+            fieldtype: "Link",
+            options: "Territory"
         }
     ],
 

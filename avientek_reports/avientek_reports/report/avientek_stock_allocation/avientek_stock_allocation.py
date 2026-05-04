@@ -121,20 +121,35 @@ def clone_qty_map(src):
     return dup
 
 def get_user_permission_values(user, doctype):
-    """Fetch user permission values for a specific doctype."""
-    return frappe.db.get_all(
-        "User Permission",
-        filters={"user": user, "allow": doctype},
-        pluck="for_value"
-    )
+    """Thin wrapper around the shared helper in `avientek` app.
+
+    Falls back to a local query if the avientek app isn't installed
+    (defensive — both apps are bench-mates in production).
+    """
+    try:
+        from avientek.api.user_permission_utils import get_user_permission_values as _shared
+        return _shared(user, doctype)
+    except Exception:
+        return frappe.db.get_all(
+            "User Permission",
+            filters={"user": user, "allow": doctype},
+            pluck="for_value"
+        ) or []
 
 # ──────────────────────────────────────────────────────────────
 # MAIN DATA
 # ──────────────────────────────────────────────────────────────
 def get_data(filters):
-    # Get user permissions
-    allowed_companies = get_user_permission_values(frappe.session.user, "Company")
-    allowed_sales_persons = get_user_permission_values(frappe.session.user, "Sales Person")
+    # ── Pull every dimension the User Permission system can constrain ──
+    # (Sridhar 2026-05-04: report must respect User Permissions across
+    # ALL constrained DocTypes, not just Company + Sales Person.)
+    user = frappe.session.user
+    allowed_companies      = get_user_permission_values(user, "Company")
+    allowed_sales_persons  = get_user_permission_values(user, "Sales Person")
+    allowed_item_groups    = get_user_permission_values(user, "Item Group")
+    allowed_customers      = get_user_permission_values(user, "Customer")
+    allowed_brands         = get_user_permission_values(user, "Brand")
+    allowed_territories    = get_user_permission_values(user, "Territory")
 
     so_cond = [SO_STATUS_FILTER]
     sql_params = []
@@ -162,6 +177,55 @@ def get_data(filters):
     if filters.get("item_code"):
         so_cond.append("soi.item_code = %s")
         sql_params.append(filters["item_code"])
+
+    # Customer filter (UI > Permissions). Pre-filter at SQL when possible
+    # to keep the result set small.
+    customer_filter = filters.get("customer") or filters.get("customer_name")
+    if customer_filter:
+        so_cond.append("so.customer = %s")
+        sql_params.append(customer_filter)
+    elif allowed_customers:
+        so_cond.append(f"so.customer IN ({', '.join(['%s'] * len(allowed_customers))})")
+        sql_params.extend(allowed_customers)
+
+    # Item Group filter via Item join — Item Group is on tabItem, not on
+    # Sales Order Item directly, so use a sub-query for the WHERE constraint.
+    item_group_filter = filters.get("item_group")
+    if item_group_filter:
+        ig_list = item_group_filter if isinstance(item_group_filter, list) else [item_group_filter]
+        so_cond.append(
+            f"soi.item_code IN ("
+            f"SELECT name FROM `tabItem` WHERE item_group IN "
+            f"({', '.join(['%s'] * len(ig_list))}))"
+        )
+        sql_params.extend(ig_list)
+    elif allowed_item_groups:
+        so_cond.append(
+            f"soi.item_code IN ("
+            f"SELECT name FROM `tabItem` WHERE item_group IN "
+            f"({', '.join(['%s'] * len(allowed_item_groups))}))"
+        )
+        sql_params.extend(allowed_item_groups)
+
+    # Brand filter (Sales Order Item carries brand directly).
+    brand_filter = filters.get("brand")
+    if brand_filter:
+        bl = brand_filter if isinstance(brand_filter, list) else [brand_filter]
+        so_cond.append(f"soi.brand IN ({', '.join(['%s'] * len(bl))})")
+        sql_params.extend(bl)
+    elif allowed_brands:
+        so_cond.append(f"soi.brand IN ({', '.join(['%s'] * len(allowed_brands))})")
+        sql_params.extend(allowed_brands)
+
+    # Territory filter (on Sales Order).
+    territory_filter = filters.get("territory")
+    if territory_filter:
+        tl = territory_filter if isinstance(territory_filter, list) else [territory_filter]
+        so_cond.append(f"so.territory IN ({', '.join(['%s'] * len(tl))})")
+        sql_params.extend(tl)
+    elif allowed_territories:
+        so_cond.append(f"so.territory IN ({', '.join(['%s'] * len(allowed_territories))})")
+        sql_params.extend(allowed_territories)
 
     where_so = "WHERE " + " AND ".join(so_cond)
 

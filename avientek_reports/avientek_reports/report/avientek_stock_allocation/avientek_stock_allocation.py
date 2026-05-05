@@ -139,6 +139,36 @@ def get_user_permission_values(user, doctype):
 # ──────────────────────────────────────────────────────────────
 # MAIN DATA
 # ──────────────────────────────────────────────────────────────
+def _intersect_with_permission(ui_value, allowed):
+    """Return the effective filter set: UI choice intersected with the
+    user's User Permission allow-list. User Permission is a HARD CEILING
+    — a UI selection cannot exceed it (Sridhar 2026-05-04 bug fix:
+    selecting a Sales Person outside the user's allowed list previously
+    let them see that data).
+
+    Returns (effective_list, denied_bool).
+      effective_list: list of values to use in the SQL IN(...). May be
+                      empty when the UI picked something the user
+                      isn't permitted on — the report should then
+                      return zero rows, not fall back.
+      denied_bool:   True iff the UI value was non-empty AND every
+                      element was outside `allowed`.
+
+    If the user has no User Permission rows for that DocType (`allowed`
+    is empty), the UI value passes through unchanged (Frappe core
+    "no UP = unrestricted" semantics).
+    """
+    if ui_value:
+        ui_list = ui_value if isinstance(ui_value, list) else [ui_value]
+        if not allowed:
+            return ui_list, False
+        permitted = [v for v in ui_list if v in set(allowed)]
+        return permitted, (len(permitted) == 0)
+    if allowed:
+        return list(allowed), False
+    return [], False
+
+
 def get_data(filters):
     # ── Pull every dimension the User Permission system can constrain ──
     # (Sridhar 2026-05-04: report must respect User Permissions across
@@ -154,21 +184,15 @@ def get_data(filters):
     so_cond = [SO_STATUS_FILTER]
     sql_params = []
 
-    # Company filter (UI > Permissions)
-    companies = filters.get("company")
+    # ── Company (UI ∩ Permissions) ─────────────────────────────────
+    companies, denied = _intersect_with_permission(filters.get("company"), allowed_companies)
+    if denied:
+        return []  # user picked a Company outside their permission set
     if companies:
-        if not isinstance(companies, list):
-            companies = [companies]
         so_cond.append(f"so.company IN ({', '.join(['%s'] * len(companies))})")
         sql_params.extend(companies)
-    elif allowed_companies:
-        companies = allowed_companies
-        so_cond.append(f"so.company IN ({', '.join(['%s'] * len(companies))})")
-        sql_params.extend(companies)
-    else:
-        companies = []
 
-    # Date filters
+    # Date filters (no UP restriction applies)
     if filters.get("from_date") and filters.get("to_date"):
         so_cond.append("so.transaction_date BETWEEN %s AND %s")
         sql_params.extend([filters["from_date"], filters["to_date"]])
@@ -178,54 +202,44 @@ def get_data(filters):
         so_cond.append("soi.item_code = %s")
         sql_params.append(filters["item_code"])
 
-    # Customer filter (UI > Permissions). Pre-filter at SQL when possible
-    # to keep the result set small.
-    customer_filter = filters.get("customer") or filters.get("customer_name")
-    if customer_filter:
-        so_cond.append("so.customer = %s")
-        sql_params.append(customer_filter)
-    elif allowed_customers:
-        so_cond.append(f"so.customer IN ({', '.join(['%s'] * len(allowed_customers))})")
-        sql_params.extend(allowed_customers)
+    # ── Customer (UI ∩ Permissions) ────────────────────────────────
+    customer_ui = filters.get("customer") or filters.get("customer_name")
+    customers, denied = _intersect_with_permission(customer_ui, allowed_customers)
+    if denied:
+        return []
+    if customers:
+        so_cond.append(f"so.customer IN ({', '.join(['%s'] * len(customers))})")
+        sql_params.extend(customers)
 
-    # Item Group filter via Item join — Item Group is on tabItem, not on
-    # Sales Order Item directly, so use a sub-query for the WHERE constraint.
-    item_group_filter = filters.get("item_group")
-    if item_group_filter:
-        ig_list = item_group_filter if isinstance(item_group_filter, list) else [item_group_filter]
+    # ── Item Group (UI ∩ Permissions) ──────────────────────────────
+    # Item Group lives on tabItem, not on Sales Order Item — use a
+    # sub-query in the WHERE constraint.
+    item_groups, denied = _intersect_with_permission(filters.get("item_group"), allowed_item_groups)
+    if denied:
+        return []
+    if item_groups:
         so_cond.append(
             f"soi.item_code IN ("
             f"SELECT name FROM `tabItem` WHERE item_group IN "
-            f"({', '.join(['%s'] * len(ig_list))}))"
+            f"({', '.join(['%s'] * len(item_groups))}))"
         )
-        sql_params.extend(ig_list)
-    elif allowed_item_groups:
-        so_cond.append(
-            f"soi.item_code IN ("
-            f"SELECT name FROM `tabItem` WHERE item_group IN "
-            f"({', '.join(['%s'] * len(allowed_item_groups))}))"
-        )
-        sql_params.extend(allowed_item_groups)
+        sql_params.extend(item_groups)
 
-    # Brand filter (Sales Order Item carries brand directly).
-    brand_filter = filters.get("brand")
-    if brand_filter:
-        bl = brand_filter if isinstance(brand_filter, list) else [brand_filter]
-        so_cond.append(f"soi.brand IN ({', '.join(['%s'] * len(bl))})")
-        sql_params.extend(bl)
-    elif allowed_brands:
-        so_cond.append(f"soi.brand IN ({', '.join(['%s'] * len(allowed_brands))})")
-        sql_params.extend(allowed_brands)
+    # ── Brand (UI ∩ Permissions) ───────────────────────────────────
+    brands, denied = _intersect_with_permission(filters.get("brand"), allowed_brands)
+    if denied:
+        return []
+    if brands:
+        so_cond.append(f"soi.brand IN ({', '.join(['%s'] * len(brands))})")
+        sql_params.extend(brands)
 
-    # Territory filter (on Sales Order).
-    territory_filter = filters.get("territory")
-    if territory_filter:
-        tl = territory_filter if isinstance(territory_filter, list) else [territory_filter]
-        so_cond.append(f"so.territory IN ({', '.join(['%s'] * len(tl))})")
-        sql_params.extend(tl)
-    elif allowed_territories:
-        so_cond.append(f"so.territory IN ({', '.join(['%s'] * len(allowed_territories))})")
-        sql_params.extend(allowed_territories)
+    # ── Territory (UI ∩ Permissions) ───────────────────────────────
+    territories, denied = _intersect_with_permission(filters.get("territory"), allowed_territories)
+    if denied:
+        return []
+    if territories:
+        so_cond.append(f"so.territory IN ({', '.join(['%s'] * len(territories))})")
+        sql_params.extend(territories)
 
     where_so = "WHERE " + " AND ".join(so_cond)
 
@@ -393,22 +407,20 @@ def get_data(filters):
             "total_balance_to_order": total_balance_to_order,
         })
 
-    # ─── Apply filters AFTER allocation ───
-    if filters.get("customer"):
-        data = [d for d in data if d["customer"] == filters["customer"]]
-
-    if filters.get("customer_name"):
-        data = [d for d in data if d["customer"] == filters["customer_name"]]
-
-    if filters.get("sales_person"):
-        sales_persons = filters.get("sales_person")
-        if not isinstance(sales_persons, list):
-            sales_persons = [sales_persons]
-        data = [d for d in data if d["sales_person"] in sales_persons]
-    elif allowed_sales_persons:
-        data = [d for d in data if d["sales_person"] in allowed_sales_persons]
+    # ─── Sales Person (UI ∩ Permissions) ────────────────────────────
+    # Sales Person comes from a tabSales Team sub-query so it can't be
+    # cleanly pre-filtered at SQL — apply intersection post-allocation.
+    effective_sps, denied = _intersect_with_permission(
+        filters.get("sales_person"), allowed_sales_persons
+    )
+    if denied:
+        return []
+    if effective_sps:
+        sp_set = set(effective_sps)
+        data = [d for d in data if d.get("sales_person") in sp_set]
 
     if filters.get("parent_sales_person"):
-        data = [d for d in data if d.get("parent_sales_person") == filters["parent_sales_person"]]
+        data = [d for d in data
+                if d.get("parent_sales_person") == filters["parent_sales_person"]]
 
     return data

@@ -100,7 +100,13 @@ def get_stock_ledger_entries(filters):
 
 
 def get_stock_ledger_entries_for_batch_no(filters):
-    """Legacy batch_no field entries"""
+    """Legacy batch_no field entries.
+
+    Skip rows that also carry a Serial and Batch Bundle — those are handled
+    by get_stock_ledger_entries_for_batch_bundle. Counting both paths would
+    double-count inward qty and mis-attribute outward qty (the SLE.batch_no
+    on a multi-batch outward bundle points to only one of the consumed batches).
+    """
     if not filters.get("from_date"):
         frappe.throw(_("'From Date' is required"))
     if not filters.get("to_date"):
@@ -121,6 +127,7 @@ def get_stock_ledger_entries_for_batch_no(filters):
             & (sle.is_cancelled == 0)
             & (sle.batch_no.isnotnull())
             & (sle.batch_no != "")
+            & (sle.serial_and_batch_bundle.isnull())
             & (sle.posting_date <= filters.get("to_date"))
         )
         .groupby(sle.voucher_no, sle.batch_no, sle.item_code, sle.warehouse)

@@ -122,6 +122,19 @@ def get_stock_ledger_entries_for_batch_no(filters):
             & (sle.batch_no.isnotnull())
             & (sle.batch_no != "")
             & (sle.posting_date <= filters.get("to_date"))
+            # Sridhar 2026-05-25 (BN15146 doubling): exclude rows that
+            # also have a Serial and Batch Bundle link — those are
+            # already counted by get_stock_ledger_entries_for_batch_bundle.
+            # Before the 2026-05-24 heal_sle_batch_no_from_sbb patch most
+            # SBB-linked SLE rows had batch_no=NULL so the two queries
+            # were naturally exclusive. After the heal, every SLE has
+            # both fields populated and the report double-counted every
+            # row (Batch.batch_qty 20 → 40, in qty 2 → 4). Adding the
+            # null/empty SBB filter restores mutual exclusivity.
+            & (
+                sle.serial_and_batch_bundle.isnull()
+                | (sle.serial_and_batch_bundle == "")
+            )
         )
         .groupby(sle.voucher_no, sle.batch_no, sle.item_code, sle.warehouse)
     )

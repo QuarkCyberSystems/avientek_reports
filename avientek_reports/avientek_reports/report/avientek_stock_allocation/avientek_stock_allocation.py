@@ -2,7 +2,7 @@
 # licence information: see licence.txt
 
 import frappe
-from frappe.utils import flt
+from frappe.utils import flt, get_datetime
 from collections import defaultdict
 
 # ──────────────────────────────────────────────────────────────
@@ -26,7 +26,12 @@ def execute(filters=None):
 # ──────────────────────────────────────────────────────────────
 def get_columns():
     return [
-        {"label": "Date & Time", "fieldname": "transaction_date", "fieldtype": "Datetime", "width": 150},
+        # CR-01 (spec final 2026-07-22): priority key is now the exact
+        # submission timestamp; the booking date stays for reference only.
+        # (The old "Date & Time" label promised a time that a Date field
+        # can never carry — corrected while relabeling.)
+        {"label": "Submission Date & Time", "fieldname": "custom_submission_datetime", "fieldtype": "Datetime", "width": 150},
+        {"label": "Order Booking Date", "fieldname": "transaction_date", "fieldtype": "Date", "width": 110},
         {"label": "Company Name", "fieldname": "company", "fieldtype": "Data", "width": 130},
         {"label": "Sales Order No.", "fieldname": "sales_order", "fieldtype": "Link", "options": "Sales Order", "width": 120},
         {"label": "Sales Person", "fieldname": "sales_person", "fieldtype": "Data", "width": 120},
@@ -243,10 +248,20 @@ def get_data(filters):
 
     where_so = "WHERE " + " AND ".join(so_cond)
 
+    # CR-01: the submission-timestamp column only exists once the
+    # avientek app's fixture has synced — guard so the two repos can
+    # deploy in either order without breaking the report.
+    has_submission_col = frappe.db.has_column("Sales Order", "custom_submission_datetime")
+    submission_select = (
+        "so.custom_submission_datetime,"
+        if has_submission_col
+        else "NULL AS custom_submission_datetime,"
+    )
+
     # Fetch ALL relevant Sales Orders (only company/date/item restrictions)
     sales_orders = frappe.db.sql(
         f"""
-        SELECT  so.transaction_date, so.company,
+        SELECT  so.transaction_date, {submission_select} so.company,
                 so.name  AS sales_order,
                 (SELECT st.sales_person FROM `tabSales Team` st
                  WHERE st.parent = so.name LIMIT 1) AS sales_person,
@@ -283,7 +298,15 @@ def get_data(filters):
     bin_map = make_bin_aggregate(item_codes, so_companies)
     fifo_map = make_fifo_map(item_codes, so_companies)
     
-    sales_orders.sort(key=lambda x: x.transaction_date)
+    # CR-01 priority key: exact submission timestamp, falling back to the
+    # booking date for orders submitted before the field existed (spec:
+    # historical orders keep current logic until amended/resubmitted).
+    # get_datetime() normalises the mix of date (booking) and datetime
+    # (submission) values — sorting raw would raise TypeError on the
+    # first mixed comparison. Stable sort keeps SQL order for exact ties.
+    sales_orders.sort(
+        key=lambda x: get_datetime(x.custom_submission_datetime or x.transaction_date)
+    )
     stock_left = clone_qty_map({it: {co: v["wh_qty"] for co, v in comp.items()} for it, comp in bin_map.items()})
 
     # Purchase Order mapping
@@ -375,6 +398,7 @@ def get_data(filters):
         total_balance_to_order = total_ordered + wh_qty_company - so.balance_qty
 
         data.append({
+            "custom_submission_datetime": so.custom_submission_datetime,
             "transaction_date": so.transaction_date,
             "company": comp,
             "sales_order": so.sales_order,

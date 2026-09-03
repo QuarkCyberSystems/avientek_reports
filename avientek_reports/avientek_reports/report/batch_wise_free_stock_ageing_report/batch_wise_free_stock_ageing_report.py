@@ -20,12 +20,19 @@ def execute(filters=None):
 
     if (
         sle_count > SLE_COUNT_LIMIT
+        # #0526 (Avientek FZCO): Company scopes the query too (the SLE queries
+        # filter sle.company == filters.company below), so Company alone is a
+        # bounded, valid selection — it lets Accounts run the report for ALL
+        # warehouses of a company. Without this the guard forced Item /
+        # Warehouse / Warehouse Type, and there was no way to see every
+        # warehouse (Warehouse Type returns only one type).
+        and not filters.get("company")
         and not filters.get("item_code")
         and not filters.get("warehouse")
         and not filters.get("warehouse_type")
     ):
         frappe.throw(
-            _("Please select either the Item or Warehouse or Warehouse Type filter to generate the report.")
+            _("Please select either the Company, Item, Warehouse or Warehouse Type filter to generate the report.")
         )
 
     if filters.get("from_date") and filters.get("to_date"):
